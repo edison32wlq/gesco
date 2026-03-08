@@ -14,10 +14,11 @@ export default function RegisterPage() {
   const [form, setForm] = useState({
     nombre: "", 
     apellido: "", 
-    tipoIdentificacion: "Cédula", // Nuevo campo
+    tipoIdentificacion: "Cédula",
     cedula: "", 
     posgrado: "", 
     experiencia: "", 
+    experienciaDocente: "No",
     correo: "", 
     telefono: "", 
     vendedor: ""
@@ -79,7 +80,7 @@ export default function RegisterPage() {
     setOpen(true);
     setForm({ 
       nombre: "", apellido: "", tipoIdentificacion: "Cédula", cedula: "", 
-      posgrado: "", experiencia: "", correo: "", telefono: "", vendedor: "" 
+      posgrado: "", experiencia: "",experienciaDocente:"", correo: "", telefono: "", vendedor: "" 
     });
     setFile(null);
   };
@@ -89,7 +90,7 @@ export default function RegisterPage() {
       <Paper 
         elevation={0}
         sx={{ 
-          p: { xs: 3, md: 5 }, width: '100%', maxWidth: 700,
+          p: { xs: 3, md: 5 }, width: '100%', maxWidth: 800,
           borderRadius: "24px", textAlign: 'center',
           background: "rgba(255, 255, 255, 0.9)",
           backdropFilter: "blur(20px)",
@@ -159,10 +160,16 @@ export default function RegisterPage() {
           </TextField>
 
           <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
-            <TextField label="Años de Experiencia" type="number" fullWidth variant="filled" 
+            <TextField 
+              label="¿Cuenta con más de 2 años de experiencia docente?" 
+              select fullWidth variant="filled" 
               InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
-              value={form.experiencia} onChange={e => setForm({...form, experiencia: e.target.value})} 
-            />
+              value={form.experienciaDocente} 
+              onChange={e => setForm({...form, experienciaDocente: e.target.value})}
+            >
+              <MenuItem value="Si">Sí, cuento con la experiencia</MenuItem>
+              <MenuItem value="No">No por el momento</MenuItem>
+            </TextField>
              <TextField label="WhatsApp / Teléfono" fullWidth variant="filled" 
               InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
               value={form.telefono} onChange={e => setForm({...form, telefono: e.target.value})} 

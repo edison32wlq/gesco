@@ -4,7 +4,7 @@ import {
   TableContainer, TableHead, TableRow, IconButton, 
   Chip, TextField, MenuItem, Stack, Button, Tooltip, Avatar,
   Fade, Dialog, DialogTitle, DialogContent, DialogActions,
-  TablePagination, Menu, Autocomplete // <-- Importado Autocomplete
+  TablePagination, Menu, Autocomplete 
 } from "@mui/material";
 
 // LIBRERÍAS DE EXPORTACIÓN
@@ -21,12 +21,14 @@ import PersonIcon from '@mui/icons-material/Person';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import VisibilityIcon from '@mui/icons-material/Visibility'; // <-- NUEVO ICONO
 
 export default function MultiplyPage() {
   const [registros, setRegistros] = useState<any[]>([]);
   const [vendedores, setVendedores] = useState<string[]>([]);
-  const [filtroVendedor, setFiltroVendedor] = useState<string | null>(""); // Cambiado para Autocomplete
+  const [filtroVendedor, setFiltroVendedor] = useState<string | null>(""); 
   const [filtroFecha, setFiltroFecha] = useState("");
+  const [filtroNombre, setFiltroNombre] = useState(""); // <-- NUEVO FILTRO TEXTO
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
@@ -68,11 +70,13 @@ export default function MultiplyPage() {
     setOpenEdit(false);
   };
 
-  // Lógica de filtrado actualizada
+  // Lógica de filtrado ACTUALIZADA con búsqueda por nombre/apellido
   const registrosFiltrados = registros.filter(r => {
+    const nombreCompleto = `${r.nombre} ${r.apellido}`.toLowerCase();
+    const coincideNombre = nombreCompleto.includes(filtroNombre.toLowerCase());
     const coincideVendedor = !filtroVendedor || r.vendedor === filtroVendedor;
     const coincideFecha = filtroFecha === "" || r.fechaFiltro === filtroFecha;
-    return coincideVendedor && coincideFecha;
+    return coincideNombre && coincideVendedor && coincideFecha;
   });
 
   const handleDownloadClick = (event: React.MouseEvent<HTMLButtonElement>) => { setAnchorEl(event.currentTarget); };
@@ -80,7 +84,14 @@ export default function MultiplyPage() {
 
   const exportToExcel = () => {
     const dataToExport = registrosFiltrados.map(r => ({
-      Nombre: r.nombre, Apellido: r.apellido, Correo: r.correo, Asesor: r.vendedor, Fecha: r.fechaFiltro, Estado: r.estado || "INGRESADO"
+      Nombre: r.nombre, 
+      Apellido: r.apellido, 
+      Cedula: r.cedula,
+      Experiencia_Docente: r.experienciaDocente || "No especificado",
+      Correo: r.correo, 
+      Asesor: r.vendedor, 
+      Fecha: r.fechaFiltro, 
+      Estado: r.estado || "INGRESADO"
     }));
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
@@ -92,14 +103,26 @@ export default function MultiplyPage() {
   const exportToPDF = () => {
     const doc = new jsPDF();
     doc.text("GESCO - Reporte de Seguimiento", 14, 15);
-    const tableColumn = ["Docente", "Correo", "Asesor", "Fecha", "Estado"];
-    const tableRows = registrosFiltrados.map(r => [`${r.nombre} ${r.apellido}`, r.correo, r.vendedor, r.fechaFiltro, r.estado?.toUpperCase() || "INGRESADO"]);
+    const tableColumn = ["Docente", "ID/Cédula", "Asesor", "Exp. Docente", "Estado"];
+    const tableRows = registrosFiltrados.map(r => [
+        `${r.nombre} ${r.apellido}`, 
+        r.cedula, 
+        r.vendedor, 
+        r.experienciaDocente || "N/A",
+        r.estado?.toUpperCase() || "INGRESADO"
+    ]);
     autoTable(doc, {
       head: [tableColumn], body: tableRows, startY: 25,
       headStyles: { fillColor: [18, 74, 112], textColor: [255, 255, 255] },
     });
     doc.save(`Reporte_GESCO_${new Date().toLocaleDateString()}.pdf`);
     handleCloseMenu();
+  };
+
+  // Función para ver comprobante
+  const verComprobante = (base64: string) => {
+    const win = window.open();
+    win?.document.write(`<iframe src="${base64}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
   };
 
   return (
@@ -152,11 +175,24 @@ export default function MultiplyPage() {
           </Box>
         </Paper>
 
-        {/* FILTROS CON BÚSQUEDA PREDICTIVA */}
+        {/* FILTROS ACTUALIZADOS */}
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 4 }}>
+          {/* BUSQUEDA POR NOMBRE/APELLIDO */}
           <Paper sx={{ p: 1.5, px: 3, borderRadius: "20px", display: 'flex', alignItems: 'center', flex: 2, border: "1px solid rgba(0,0,0,0.05)" }}>
             <SearchIcon sx={{ color: "#124a70", mr: 2, fontSize: 28 }} />
-            {/* CambiadoTextField por Autocomplete para permitir escribir y buscar */}
+            <TextField 
+                fullWidth 
+                variant="standard" 
+                placeholder="Buscar por nombre o apellido..."
+                value={filtroNombre}
+                onChange={(e) => { setFiltroNombre(e.target.value); setPage(0); }}
+                InputProps={{ disableUnderline: true }}
+                sx={{ "& input::placeholder": { fontWeight: 600, color: "#124a70", opacity: 0.5 } }}
+            />
+          </Paper>
+
+          <Paper sx={{ p: 1.5, px: 3, borderRadius: "20px", display: 'flex', alignItems: 'center', flex: 2, border: "1px solid rgba(0,0,0,0.05)" }}>
+            <PersonIcon sx={{ color: "#124a70", mr: 2 }} />
             <Autocomplete
               fullWidth
               options={vendedores}
@@ -168,7 +204,7 @@ export default function MultiplyPage() {
               renderInput={(params) => (
                 <TextField 
                   {...params} 
-                  label="Buscar o filtrar por Asesor" 
+                  label="Filtrar por Asesor" 
                   variant="standard" 
                   InputProps={{ ...params.InputProps, disableUnderline: true }}
                   sx={{ "& .MuiInputLabel-root": { fontWeight: 700, color: "#124a70" } }}
@@ -195,7 +231,7 @@ export default function MultiplyPage() {
               <TableRow>
                 <TableCell sx={{ fontWeight: 800, color: "#64748b", py: 3 }}>DATOS DEL DOCENTE</TableCell>
                 <TableCell sx={{ fontWeight: 800, color: "#64748b" }}>ASESOR</TableCell>
-                <TableCell sx={{ fontWeight: 800, color: "#64748b" }}>FECHA</TableCell>
+                <TableCell sx={{ fontWeight: 800, color: "#64748b" }}>EXP. DOCENTE</TableCell>
                 <TableCell sx={{ fontWeight: 800, color: "#64748b" }}>ESTADO</TableCell>
                 <TableCell align="right" sx={{ fontWeight: 800, color: "#64748b", pr: 4 }}>GESTIÓN</TableCell>
               </TableRow>
@@ -213,12 +249,28 @@ export default function MultiplyPage() {
                     </Stack>
                   </TableCell>
                   <TableCell><Chip label={row.vendedor} sx={{ fontWeight: 700, bgcolor: "#f1f5f9", color: "#124a70" }} /></TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: "#475569" }}>{row.fechaFiltro}</TableCell>
+                  <TableCell>
+                    <Chip 
+                        label={row.experienciaDocente || "N/A"} 
+                        variant="outlined"
+                        sx={{ fontWeight: 700, color: row.experienciaDocente === "Si" ? "#80bc71" : "#64748b", borderColor: row.experienciaDocente === "Si" ? "#80bc71" : "#e2e8f0" }} 
+                    />
+                  </TableCell>
                   <TableCell>
                     <Chip label={row.estado?.toUpperCase() || "INGRESADO"} color={row.estado === "Aprobado" ? "success" : "warning"} sx={{ fontWeight: 800, borderRadius: "8px", fontSize: "0.75rem" }} />
                   </TableCell>
                   <TableCell align="right" sx={{ pr: 3 }}>
                     <Stack direction="row" spacing={1} justifyContent="flex-end">
+                      {/* BOTÓN VER COMPROBANTE */}
+                      <Tooltip title="Ver Comprobante">
+                        <IconButton 
+                            onClick={() => verComprobante(row.comprobante)}
+                            sx={{ color: "#80bc71", bgcolor: "#f0f9ed", "&:hover": { bgcolor: "#80bc71", color: "white" } }}
+                        >
+                            <VisibilityIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+
                       <Tooltip title="Editar"><IconButton onClick={() => handleOpenEdit(row)} sx={{ color: "#124a70", bgcolor: "#f1f5f9", "&:hover": { bgcolor: "#124a70", color: "white" } }}><EditIcon fontSize="small" /></IconButton></Tooltip>
                       <Tooltip title="Eliminar"><IconButton onClick={() => eliminarRegistro(row.id)} sx={{ color: "#ef4444", bgcolor: "#fef2f2", "&:hover": { bgcolor: "#ef4444", color: "white" } }}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
                     </Stack>
@@ -237,6 +289,12 @@ export default function MultiplyPage() {
             <Stack spacing={3} sx={{ mt: 2 }}>
               <TextField label="Nombre" fullWidth variant="outlined" value={selectedReg?.nombre || ""} onChange={(e) => setSelectedReg({...selectedReg, nombre: e.target.value})} sx={{ "& .MuiOutlinedInput-root": { borderRadius: "12px" } }} />
               <TextField label="Apellido" fullWidth variant="outlined" value={selectedReg?.apellido || ""} onChange={(e) => setSelectedReg({...selectedReg, apellido: e.target.value})} sx={{ "& .MuiOutlinedInput-root": { borderRadius: "12px" } }} />
+              
+              <TextField select label="¿Más de 2 años Exp. Docente?" fullWidth value={selectedReg?.experienciaDocente || "No"} onChange={(e) => setSelectedReg({...selectedReg, experienciaDocente: e.target.value})} sx={{ "& .MuiOutlinedInput-root": { borderRadius: "12px" } }}>
+                <MenuItem value="Si">Sí</MenuItem>
+                <MenuItem value="No">No</MenuItem>
+              </TextField>
+
               <TextField select label="Estado de Admisión" fullWidth value={selectedReg?.estado || "Ingresado"} onChange={(e) => setSelectedReg({...selectedReg, estado: e.target.value})} sx={{ "& .MuiOutlinedInput-root": { borderRadius: "12px" } }}>
                 <MenuItem value="Ingresado">Ingresado</MenuItem>
                 <MenuItem value="Aprobado">Aprobado</MenuItem>

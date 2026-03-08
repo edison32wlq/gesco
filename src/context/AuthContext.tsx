@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from "
 
 interface User {
   username: string;
-  rol: "superadmin" | "admin" | "usuario"| "asesor";
+  rol: "superadmin" | "ute" | "usuario" | "asesor";
 }
 
 interface AuthContextType {

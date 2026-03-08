@@ -1,24 +1,25 @@
 import { 
   AppBar, Box, Button, Container, Toolbar, Typography, 
-  CssBaseline, Avatar, Stack, IconButton, Tooltip, Divider 
+  CssBaseline, Avatar, Stack, IconButton, Tooltip, Divider,
+  Menu, MenuItem, Fade
 } from "@mui/material";
 import { NavLink, Route, Routes, useLocation, Navigate } from "react-router-dom";
+import { useState } from "react"; 
 import LogoutIcon from '@mui/icons-material/Logout';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 
-// IMPORTACIÓN DE CONTEXTO Y PROTECCIÓN
 import { useAuth } from "./context/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
-// IMPORTACIÓN DE ASSETS
 import gescoLogo from "./assets/gesco-logo.png";
 
-// IMPORTACIÓN DE PÁGINAS
 import HomePage from "./pages/HomePage"; 
 import RegisterPage from "./pages/SumPage"; 
 import MultiplyPage from "./pages/MultiplyPage";
 import SellersPage from "./pages/SellersPage";
 import LoginPage from "./pages/LoginPage"; 
 import MySalesPage from "./pages/MySalesPage";
+import UsersManagementPage from "./pages/UsersManagementPage";
 
 const linkBtnSx = {
   color: "rgba(255,255,255,0.85)",
@@ -29,6 +30,8 @@ const linkBtnSx = {
   fontWeight: 700,
   fontSize: "0.85rem",
   transition: "all 0.3s ease",
+  display: "flex",
+  alignItems: "center",
   "&:hover": { 
     bgcolor: "rgba(255,255,255,0.12)",
     color: "#fff",
@@ -46,7 +49,23 @@ export default function App() {
   const { user, logout } = useAuth();
   const location = useLocation();
 
-  // Ocultar Navbar en el Login
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const openMenu = Boolean(anchorEl);
+
+  // --- SOLUCIÓN AL ERROR DEL EVENTO ---
+  // Cambiamos 'event' por 'e' para evitar conflictos con variables globales
+  const handleOpenMenu = (e: React.MouseEvent<HTMLElement>) => {
+    if (e && e.currentTarget) {
+      setAnchorEl(e.currentTarget);
+    }
+  };
+
+  const handleCloseMenu = () => {
+    setAnchorEl(null);
+  };
+
+  const isAdminPath = ["/seguimiento", "/vendedores", "/gestion-cuentas"].includes(location.pathname);
+
   if (location.pathname === "/login") {
     return (
       <>
@@ -84,21 +103,55 @@ export default function App() {
             </Box>
           </Stack>
 
-          {/* MENÚ DINÁMICO SEGÚN ROL */}
           <Box sx={{ display: { xs: 'none', md: 'flex' }, bgcolor: "rgba(0,0,0,0.1)", p: 0.6, borderRadius: "16px" }}>
             <Button component={NavLink} to="/" end sx={linkBtnSx}>Inicio</Button>
             <Button component={NavLink} to="/registro" sx={linkBtnSx}>Registro Maestría</Button>
             
-            {/* Solo SuperAdmin y Admin ven Base de Datos y Asesores */}
-            {(user?.rol === 'superadmin' || user?.rol === 'admin') && (
+            {(user?.rol === 'superadmin' || user?.rol === 'ute') && (
               <>
-                <Button component={NavLink} to="/seguimiento" sx={linkBtnSx}>Base de Datos</Button>
-                <Button component={NavLink} to="/vendedores" sx={linkBtnSx}>Asesores</Button>
+                <Button 
+                  onClick={handleOpenMenu}
+                  sx={{ 
+                    ...linkBtnSx, 
+                    ...(isAdminPath ? linkBtnSx["&.active"] : {}) 
+                  }}
+                >
+                  Administración <KeyboardArrowDownIcon sx={{ ml: 0.5 }} />
+                </Button>
+                <Menu
+                  anchorEl={anchorEl}
+                  open={openMenu}
+                  onClose={handleCloseMenu}
+                  TransitionComponent={Fade}
+                  PaperProps={{
+                    sx: {
+                      mt: 1.5,
+                      bgcolor: "#1d6ea5",
+                      backgroundImage: "linear-gradient(135deg, #124a70 0%, #1d6ea5 100%)",
+                      color: "#fff",
+                      borderRadius: "12px",
+                      border: "1px solid rgba(255,255,255,0.2)",
+                      boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
+                      "& .MuiMenuItem-root": {
+                        px: 3,
+                        py: 1.5,
+                        fontWeight: 700,
+                        fontSize: "0.85rem",
+                        "&:hover": { bgcolor: "rgba(255,255,255,0.1)" },
+                        "&.active": { color: "#80bc71" }
+                      }
+                    }
+                  }}
+                >
+                  <MenuItem onClick={handleCloseMenu} component={NavLink} to="/seguimiento">Base de Datos</MenuItem>
+                  <MenuItem onClick={handleCloseMenu} component={NavLink} to="/vendedores">Asesores</MenuItem>
+                  <MenuItem onClick={handleCloseMenu} component={NavLink} to="/gestion-cuentas">Gestión Cuentas</MenuItem>
+                </Menu>
               </>
             )}
 
-            {/* Solo el Asesor ve su panel de ventas */}
-            {user?.rol === 'asesor' && (
+            {/* ACTUALIZADO: Superadmin y Asesor ven este botón */}
+            {(user?.rol === 'asesor' || user?.rol === 'superadmin') && (
               <Button component={NavLink} to="/mis-ventas" sx={linkBtnSx}>Mis Ventas</Button>
             )}
           </Box>
@@ -134,26 +187,30 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
 
-            {/* RUTAS ACCESIBLES PARA TODOS LOS LOGUEADOS */}
             <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
             <Route path="/registro" element={<ProtectedRoute><RegisterPage /></ProtectedRoute>} />
 
-            {/* RUTAS RESTRINGIDAS (Solo Admin y SuperAdmin) */}
             <Route path="/seguimiento" element={
               <ProtectedRoute>
-                {user?.rol === 'superadmin' || user?.rol === 'admin' ? <MultiplyPage /> : <Navigate to="/" />}
+                {user?.rol === 'superadmin' || user?.rol === 'ute' ? <MultiplyPage /> : <Navigate to="/" />}
               </ProtectedRoute>
             } />
             <Route path="/vendedores" element={
               <ProtectedRoute>
-                {user?.rol === 'superadmin' || user?.rol === 'admin' ? <SellersPage /> : <Navigate to="/" />}
+                {user?.rol === 'superadmin' || user?.rol === 'ute' ? <SellersPage /> : <Navigate to="/" />}
               </ProtectedRoute>
             } />
 
-            {/* RUTA RESTRINGIDA (Solo Asesor) */}
+            <Route path="/gestion-cuentas" element={
+              <ProtectedRoute>
+                {user?.rol === 'superadmin' || user?.rol === 'ute' ? <UsersManagementPage /> : <Navigate to="/" />}
+              </ProtectedRoute>
+            } />
+
+            {/* ACTUALIZADO: Permiso en la ruta para superadmin */}
             <Route path="/mis-ventas" element={
               <ProtectedRoute>
-                {user?.rol === 'asesor' ? <MySalesPage /> : <Navigate to="/" />}
+                {(user?.rol === 'asesor' || user?.rol === 'superadmin') ? <MySalesPage /> : <Navigate to="/" />}
               </ProtectedRoute>
             } />
             

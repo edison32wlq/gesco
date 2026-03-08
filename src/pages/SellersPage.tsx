@@ -20,6 +20,7 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import SearchIcon from '@mui/icons-material/Search';
 import SortIcon from '@mui/icons-material/Sort';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import EventNoteIcon from '@mui/icons-material/EventNote'; // Icono nuevo para fecha
 
 interface Vendedor {
   nombre: string;
@@ -38,6 +39,7 @@ export default function SellersPage() {
   // ESTADOS DE FILTRO
   const [busqueda, setBusqueda] = useState("");
   const [orden, setOrden] = useState("nombre"); 
+  const [filtroFecha, setFiltroFecha] = useState(""); // <-- NUEVO: Filtro por día/mes
 
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [indexAEliminar, setIndexAEliminar] = useState<number | null>(null);
@@ -67,8 +69,15 @@ export default function SellersPage() {
     localStorage.setItem("vendedores", JSON.stringify(nombresActivos));
   };
 
-  // --- LÓGICA DE FILTRADO Y ORDENAMIENTO ---
-  const obtenerVentas = (nombre: string) => registros.filter(reg => reg.vendedor === nombre).length;
+  // --- LÓGICA DE FILTRADO Y ORDENAMIENTO POR TIEMPO ---
+  const obtenerVentas = (nombre: string) => {
+    return registros.filter(reg => {
+      const coincideVendedor = reg.vendedor === nombre;
+      // Si hay fecha seleccionada, filtra por ella; si no, cuenta todo
+      const coincideFecha = filtroFecha === "" || reg.fechaFiltro === filtroFecha;
+      return coincideVendedor && coincideFecha;
+    }).length;
+  };
 
   const vendedoresFiltrados = useMemo(() => {
     let resultado = vendedores.filter(v => 
@@ -80,13 +89,14 @@ export default function SellersPage() {
       if (orden === "estado") return Number(a.bloqueado) - Number(b.bloqueado);
       return a.nombre.localeCompare(b.nombre);
     });
-  }, [vendedores, busqueda, orden, registros]);
+  }, [vendedores, busqueda, orden, registros, filtroFecha]);
 
-  const filtrosActivos = busqueda !== "" || orden !== "nombre";
+  const filtrosActivos = busqueda !== "" || orden !== "nombre" || filtroFecha !== "";
 
   const limpiarFiltros = () => {
     setBusqueda("");
     setOrden("nombre");
+    setFiltroFecha("");
   };
 
   const agregarVendedor = () => {
@@ -156,7 +166,7 @@ export default function SellersPage() {
               <LeaderboardIcon sx={{ color: '#80bc71' }} />
             </Avatar>
             <Box>
-              <Typography variant="overline" sx={{ opacity: 0.8, fontWeight: 700 }}>Líder Actual</Typography>
+              <Typography variant="overline" sx={{ opacity: 0.8, fontWeight: 700 }}>{filtroFecha ? `Líder del día` : `Líder Actual`}</Typography>
               <Typography variant="h6" sx={{ fontWeight: 900 }}>{topVendedor && totalVentasTop > 0 ? topVendedor.nombre : "Sin datos"}</Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>{totalVentasTop} registros</Typography>
             </Box>
@@ -172,12 +182,12 @@ export default function SellersPage() {
           </Paper>
         </Box>
 
-        {/* BARRA DE FILTROS, ORDEN Y LIMPIAR */}
+        {/* BARRA DE FILTROS ACTUALIZADA */}
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 3 }} alignItems="center">
-          <Paper elevation={0} sx={{ flex: 2, p: 1, px: 2, borderRadius: "16px", border: "1px solid #e2e8f0", display: 'flex', alignItems: 'center', width: '100%' }}>
+          <Paper elevation={0} sx={{ flex: 1.5, p: 1, px: 2, borderRadius: "16px", border: "1px solid #e2e8f0", display: 'flex', alignItems: 'center', width: '100%' }}>
             <SearchIcon sx={{ color: '#94a3b8', mr: 1 }} />
             <TextField 
-              placeholder="Buscar por nombre..." 
+              placeholder="Nombre..." 
               variant="standard" 
               fullWidth 
               InputProps={{ disableUnderline: true }}
@@ -186,11 +196,26 @@ export default function SellersPage() {
             />
           </Paper>
 
+          {/* NUEVO FILTRO DE FECHA (DÍA/MES) */}
+          <Paper elevation={0} sx={{ flex: 1, p: 1, px: 2, borderRadius: "16px", border: "1px solid #e2e8f0", display: 'flex', alignItems: 'center', width: '100%' }}>
+            <EventNoteIcon sx={{ color: '#124a70', mr: 1 }} />
+            <TextField 
+              type="date"
+              label="Ver ventas del día" 
+              variant="standard" 
+              fullWidth 
+              InputLabelProps={{ shrink: true }}
+              InputProps={{ disableUnderline: true }}
+              value={filtroFecha}
+              onChange={(e) => setFiltroFecha(e.target.value)}
+            />
+          </Paper>
+
           <Paper elevation={0} sx={{ flex: 1, p: 1, px: 2, borderRadius: "16px", border: "1px solid #e2e8f0", display: 'flex', alignItems: 'center', width: '100%' }}>
             <SortIcon sx={{ color: '#124a70', mr: 1 }} />
             <TextField 
               select 
-              label="Ordenar por" 
+              label="Ordenar" 
               variant="standard" 
               fullWidth 
               value={orden}
@@ -198,7 +223,7 @@ export default function SellersPage() {
               InputProps={{ disableUnderline: true }}
             >
               <MenuItem value="nombre">Alfabeto (A-Z)</MenuItem>
-              <MenuItem value="ventas">Ventas (Mayor a Menor)</MenuItem>
+              <MenuItem value="ventas">Ventas (Rango seleccionado)</MenuItem>
               <MenuItem value="estado">Estado (Activos primero)</MenuItem>
             </TextField>
           </Paper>
@@ -230,7 +255,7 @@ export default function SellersPage() {
             <TableHead sx={{ bgcolor: "#f8fafc" }}>
               <TableRow>
                 <TableCell sx={{ fontWeight: 800 }}>IDENTIDAD</TableCell>
-                <TableCell align="center" sx={{ fontWeight: 800 }}>VENTAS</TableCell>
+                <TableCell align="center" sx={{ fontWeight: 800 }}>VENTAS {filtroFecha ? `(${filtroFecha})` : `TOTALES`}</TableCell>
                 <TableCell align="center" sx={{ fontWeight: 800 }}>ESTADO</TableCell>
                 <TableCell align="right" sx={{ fontWeight: 800 }}>ACCIONES</TableCell>
               </TableRow>
@@ -298,13 +323,6 @@ export default function SellersPage() {
                   </TableRow>
                 );
               })}
-              {vendedoresFiltrados.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} align="center" sx={{ py: 4 }}>
-                    <Typography variant="body2" color="text.secondary">No se encontraron asesores que coincidan con la búsqueda.</Typography>
-                  </TableCell>
-                </TableRow>
-              )}
             </TableBody>
           </Table>
         </TableContainer>
