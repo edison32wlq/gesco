@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   Paper, TextField, Typography, Button, Box, Stack, 
   InputAdornment, IconButton, Fade, Divider, Alert
@@ -6,13 +6,10 @@ import {
 import { 
   Visibility, VisibilityOff, LockOutlined, PersonOutline 
 } from "@mui/icons-material";
-import { useNavigate } from "react-router-dom"; 
-import { useAuth } from "../context/AuthContext"; 
+import { useNavigate, useLocation } from "react-router-dom"; 
+import { useAuth, type RolOficial } from "../context/AuthContext"; 
 import logoUte from "../assets/logo-ute-wp.png";
 import gescoLogo from "../assets/gesco-logo.png";
-
-// 1. Roles exactos definidos en tu AuthContext
-type RolOficial = "superadmin" | "ute" | "usuario" | "asesor";
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
@@ -20,7 +17,15 @@ export default function LoginPage() {
   const [credentials, setCredentials] = useState({ user: "", pass: "" });
   
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const location = useLocation();
+  const { login, isAuthenticated } = useAuth();
+
+  // Si el usuario ya está logueado, lo mandamos al inicio automáticamente
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate("/", { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,13 +33,15 @@ export default function LoginPage() {
 
     const { user, pass } = credentials;
 
-    // --- 1. CUENTA SUPERADMIN MAESTRA (HARDCODED) ---
+    // --- 1. CUENTA SUPERADMIN MAESTRA ---
     if (user === "god_gesco" && pass === "super2026") {
       login({ 
         username: "Director General", 
+        email: "admin@gesco.com", // Agregamos email para cumplir con la interfaz
         rol: "superadmin" 
       });
-      navigate("/");
+      const origin = location.state?.from?.pathname || "/";
+      navigate(origin, { replace: true });
       return;
     }
 
@@ -42,31 +49,32 @@ export default function LoginPage() {
     const usuariosRaw = localStorage.getItem("usuarios_sistema");
     const usuariosGuardados: any[] = usuariosRaw ? JSON.parse(usuariosRaw) : [];
 
-    // Buscamos coincidencia (por email o username)
     const usuarioEncontrado = usuariosGuardados.find(u => 
       (u.email === user || u.username === user) && u.password === pass
     );
 
     if (usuarioEncontrado) {
-      // Validar si el usuario está bloqueado
       if (usuarioEncontrado.estado === 'BLOQUEADO') {
         setError({ show: true, msg: "Su cuenta ha sido inhabilitada temporalmente." });
         return;
       }
 
-      // Validar que el rol que viene del LocalStorage sea válido para el Contexto
-      // Si por alguna razón hay basura en el LocalStorage (como el antiguo 'estandar')
-      // lo forzamos a 'usuario' para que no rompa la App.
-      const rolesValidos = ["superadmin", "ute", "usuario", "asesor"];
+      const rolesValidos: RolOficial[] = ["superadmin", "ute", "usuario", "asesor"];
       const rolFinal: RolOficial = rolesValidos.includes(usuarioEncontrado.rol) 
         ? usuarioEncontrado.rol 
         : "usuario";
 
+      // Login con la estructura completa requerida por el Contexto
       login({ 
+        id: usuarioEncontrado.id,
         username: usuarioEncontrado.username, 
+        email: usuarioEncontrado.email || user, // Aseguramos que el email exista
         rol: rolFinal 
       });
-      navigate("/");
+
+      // Redirigir a donde intentaba ir o al inicio
+      const origin = location.state?.from?.pathname || "/";
+      navigate(origin, { replace: true });
     } else {
       setError({ show: true, msg: "Credenciales incorrectas o cuenta inexistente." });
     }
@@ -87,7 +95,6 @@ export default function LoginPage() {
             boxShadow: "0 40px 100px rgba(18, 74, 112, 0.15)"
           }}
         >
-          {/* SECCIÓN LOGOS */}
           <Stack direction="row" justifyContent="center" alignItems="center" spacing={2} sx={{ mb: 5 }}>
             <img src={gescoLogo} alt="GESCO" style={{ height: 45 }} />
             <Divider orientation="vertical" flexItem sx={{ borderRightWidth: 2, height: 30, my: 'auto' }} />

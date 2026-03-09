@@ -24,9 +24,9 @@ export default function RegisterPage() {
     vendedor: ""
   });
   
-  const [vendedores, setVendedores] = useState<string[]>([]);
+  // Ahora manejamos una lista de objetos de asesores
+  const [vendedores, setVendedores] = useState<any[]>([]);
   
-  // Lista de posgrados actualizada con las maestrías solicitadas
   const [posgrados] = useState<string[]>([
     "Maestría en Pedagogía, Mención Docencia e Innovación Educativa",
     "Maestría en Educación, Mención Gestión del Aprendizaje", 
@@ -38,9 +38,15 @@ export default function RegisterPage() {
   const [open, setOpen] = useState(false);
   const [_tempNombre, setTempNombre] = useState("");
 
+  // --- CORRECCIÓN: CARGA DINÁMICA DE ASESORES ---
   useEffect(() => {
-    const vendedoresGuardados = JSON.parse(localStorage.getItem("vendedores") || "[]");
-    setVendedores(vendedoresGuardados);
+    const usuariosRaw = localStorage.getItem("usuarios_sistema");
+    if (usuariosRaw) {
+      const todosLosUsuarios = JSON.parse(usuariosRaw);
+      // Filtramos solo los usuarios que tienen rol 'asesor'
+      const soloAsesores = todosLosUsuarios.filter((u: any) => u.rol === "asesor");
+      setVendedores(soloAsesores);
+    }
   }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -53,7 +59,6 @@ export default function RegisterPage() {
 
   const guardarRegistro = () => {
     setError(null);
-    // Validación actualizada
     if (!form.nombre || !form.apellido || !form.cedula || !form.vendedor || !file || !form.posgrado) {
       setError("Faltan datos obligatorios: Nombre, Identificación, Posgrado, Vendedor o Comprobante.");
       return;
@@ -80,7 +85,7 @@ export default function RegisterPage() {
     setOpen(true);
     setForm({ 
       nombre: "", apellido: "", tipoIdentificacion: "Cédula", cedula: "", 
-      posgrado: "", experiencia: "",experienciaDocente:"", correo: "", telefono: "", vendedor: "" 
+      posgrado: "", experiencia: "", experienciaDocente: "No", correo: "", telefono: "", vendedor: "" 
     });
     setFile(null);
   };
@@ -98,7 +103,6 @@ export default function RegisterPage() {
           boxShadow: "0 25px 60px rgba(0,0,0,0.08)"
         }}
       >
-        {/* LOGOS */}
         <Stack direction="row" justifyContent="center" alignItems="center" spacing={3} sx={{ mb: 4 }}>
           <img src={gescoLogo} alt="Logo GESCO" style={{ height: 50 }} />
           <Divider orientation="vertical" flexItem sx={{ borderRightWidth: 2, height: 40, my: 'auto' }} />
@@ -121,7 +125,6 @@ export default function RegisterPage() {
         )}
 
         <Stack spacing={2.5} textAlign="left">
-          {/* NOMBRES Y APELLIDOS */}
           <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
             <TextField label="Nombres" fullWidth variant="filled" 
               InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
@@ -133,7 +136,6 @@ export default function RegisterPage() {
             />
           </Box>
 
-          {/* TIPO DE IDENTIFICACIÓN Y NÚMERO */}
           <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
             <TextField 
               label="Tipo ID" select sx={{ width: { xs: '100%', sm: '40%' } }} variant="filled"
@@ -149,7 +151,6 @@ export default function RegisterPage() {
             />
           </Box>
 
-          {/* POSGRADO AL QUE POSTULA */}
           <TextField 
             label="Maestría / Posgrado" select fullWidth variant="filled" 
             InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
@@ -161,7 +162,7 @@ export default function RegisterPage() {
 
           <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
             <TextField 
-              label="¿Cuenta con más de 2 años de experiencia docente?" 
+              label="¿Experiencia docente (+2 años)?" 
               select fullWidth variant="filled" 
               InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
               value={form.experienciaDocente} 
@@ -181,16 +182,24 @@ export default function RegisterPage() {
             value={form.correo} onChange={e => setForm({...form, correo: e.target.value})} 
           />
 
+          {/* SELECT DINÁMICO DE ASESORES */}
           <TextField 
             label="Asesor GESCO Responsable" select fullWidth variant="filled" 
             InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
             value={form.vendedor} onChange={e => setForm({...form, vendedor: e.target.value})}
           >
             <MenuItem value="" disabled>Seleccione un asesor</MenuItem>
-            {vendedores.map((v, i) => <MenuItem key={i} value={v}>{v}</MenuItem>)}
+            {vendedores.length > 0 ? (
+              vendedores.map((v, i) => (
+                <MenuItem key={i} value={v.username}>
+                  {v.username}
+                </MenuItem>
+              ))
+            ) : (
+              <MenuItem disabled value="">No hay asesores registrados</MenuItem>
+            )}
           </TextField>
           
-          {/* COMPROBANTE */}
           <Box sx={{ 
             p: 3, borderRadius: '16px', border: '2px dashed #1d6ea5', 
             bgcolor: 'rgba(29, 110, 165, 0.03)', textAlign: 'center'

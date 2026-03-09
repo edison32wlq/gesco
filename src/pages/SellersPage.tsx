@@ -1,79 +1,47 @@
 import { useState, useEffect, useMemo } from "react";
 import { 
-  Paper, TextField, Typography, Button, Stack, Table, 
-  TableBody, TableCell, TableHead, TableRow, IconButton, 
-  Box, TableContainer, Alert, Chip, Avatar, Fade, Tooltip,
-  Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
-  MenuItem
+  Paper, TextField, Typography, Stack, Table, 
+  TableBody, TableCell, TableHead, TableRow, 
+  Box, TableContainer, Chip, Avatar, Fade,
+  MenuItem, Button
 } from "@mui/material";
 
 // ICONOS
-import DeleteIcon from "@mui/icons-material/Delete";
-import EditIcon from "@mui/icons-material/Edit";
-import SaveIcon from "@mui/icons-material/Save";
-import CancelIcon from "@mui/icons-material/Cancel";
 import LeaderboardIcon from '@mui/icons-material/Leaderboard';
 import StarsIcon from '@mui/icons-material/Stars';
-import BlockIcon from '@mui/icons-material/Block';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import SearchIcon from '@mui/icons-material/Search';
 import SortIcon from '@mui/icons-material/Sort';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
-import EventNoteIcon from '@mui/icons-material/EventNote'; // Icono nuevo para fecha
-
-interface Vendedor {
-  nombre: string;
-  fechaAlta: string;
-  bloqueado: boolean; 
-}
+import EventNoteIcon from '@mui/icons-material/EventNote';
 
 export default function SellersPage() {
-  const [nuevoNombre, setNuevoNombre] = useState("");
-  const [vendedores, setVendedores] = useState<Vendedor[]>([]);
+  // Ahora manejamos los usuarios del sistema que tengan rol 'asesor'
+  const [vendedores, setVendedores] = useState<any[]>([]);
   const [registros, setRegistros] = useState<any[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [editandoIndex, setEditandoIndex] = useState<number | null>(null);
-  const [nombreEditado, setNombreEditado] = useState("");
 
   // ESTADOS DE FILTRO
   const [busqueda, setBusqueda] = useState("");
-  const [orden, setOrden] = useState("nombre"); 
-  const [filtroFecha, setFiltroFecha] = useState(""); // <-- NUEVO: Filtro por día/mes
-
-  const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
-  const [indexAEliminar, setIndexAEliminar] = useState<number | null>(null);
+  const [orden, setOrden] = useState("ventas"); 
+  const [filtroFecha, setFiltroFecha] = useState("");
 
   const cargarDatos = () => {
-    let v_guardados = JSON.parse(localStorage.getItem("vendedores_pro") || "[]");
+    // 1. Obtenemos las cuentas generales del sistema
+    const usuariosSistema = JSON.parse(localStorage.getItem("usuarios_sistema") || "[]");
+    // 2. Filtramos para mostrar solo a los que son 'asesor'
+    const soloAsesores = usuariosSistema.filter((u: any) => u.rol === "asesor");
+    
     const r_guardados = JSON.parse(localStorage.getItem("registros") || "[]");
 
-    if (v_guardados.length === 0) {
-      v_guardados = [{ 
-        nombre: "Asesor Comercial", 
-        fechaAlta: new Date().toLocaleDateString(),
-        bloqueado: false 
-      }];
-      actualizarVendedores(v_guardados);
-    }
-    setVendedores(v_guardados);
+    setVendedores(soloAsesores);
     setRegistros(r_guardados);
   };
 
   useEffect(() => { cargarDatos(); }, []);
 
-  const actualizarVendedores = (nuevos: Vendedor[]) => {
-    setVendedores(nuevos);
-    localStorage.setItem("vendedores_pro", JSON.stringify(nuevos));
-    const nombresActivos = nuevos.filter(v => !v.bloqueado).map(v => v.nombre);
-    localStorage.setItem("vendedores", JSON.stringify(nombresActivos));
-  };
-
-  // --- LÓGICA DE FILTRADO Y ORDENAMIENTO POR TIEMPO ---
+  // --- LÓGICA DE VENTAS ---
   const obtenerVentas = (nombre: string) => {
     return registros.filter(reg => {
       const coincideVendedor = reg.vendedor === nombre;
-      // Si hay fecha seleccionada, filtra por ella; si no, cuenta todo
       const coincideFecha = filtroFecha === "" || reg.fechaFiltro === filtroFecha;
       return coincideVendedor && coincideFecha;
     }).length;
@@ -81,13 +49,16 @@ export default function SellersPage() {
 
   const vendedoresFiltrados = useMemo(() => {
     let resultado = vendedores.filter(v => 
-      v.nombre.toLowerCase().includes(busqueda.toLowerCase())
+      v.username.toLowerCase().includes(busqueda.toLowerCase())
     );
 
     return resultado.sort((a, b) => {
-      if (orden === "ventas") return obtenerVentas(b.nombre) - obtenerVentas(a.nombre);
-      if (orden === "estado") return Number(a.bloqueado) - Number(b.bloqueado);
-      return a.nombre.localeCompare(b.nombre);
+      if (orden === "ventas") return obtenerVentas(b.username) - obtenerVentas(a.username);
+      if (orden === "estado") {
+        // Ordenar por estado: ACTIVO primero
+        return a.estado === "ACTIVO" ? -1 : 1;
+      }
+      return a.username.localeCompare(b.username);
     });
   }, [vendedores, busqueda, orden, registros, filtroFecha]);
 
@@ -99,57 +70,13 @@ export default function SellersPage() {
     setFiltroFecha("");
   };
 
-  const agregarVendedor = () => {
-    setError(null);
-    const nombreTrim = nuevoNombre.trim();
-    if (!nombreTrim) { setError("El nombre es obligatorio."); return; }
-    if (vendedores.some(v => v.nombre.toLowerCase() === nombreTrim.toLowerCase())) {
-      setError("Este asesor ya existe."); return;
-    }
-    const nuevos = [...vendedores, { 
-        nombre: nombreTrim, 
-        fechaAlta: new Date().toLocaleDateString(), 
-        bloqueado: false 
-    }];
-    actualizarVendedores(nuevos);
-    setNuevoNombre("");
-  };
+  // Lógica para el Top Seller (basado en los filtros actuales)
+  const topVendedor = useMemo(() => {
+    if (vendedores.length === 0) return null;
+    return [...vendedores].sort((a, b) => obtenerVentas(b.username) - obtenerVentas(a.username))[0];
+  }, [vendedores, registros, filtroFecha]);
 
-  const handleOpenDelete = (index: number) => {
-    setIndexAEliminar(index);
-    setOpenDeleteDialog(true);
-  };
-
-  const confirmarEliminacion = () => {
-    if (indexAEliminar !== null) {
-      const nuevos = vendedores.filter((_, i) => i !== indexAEliminar);
-      actualizarVendedores(nuevos);
-      setOpenDeleteDialog(false);
-      setIndexAEliminar(null);
-    }
-  };
-
-  const iniciarEdicion = (index: number, nombre: string) => {
-    setEditandoIndex(index);
-    setNombreEditado(nombre);
-  };
-
-  const guardarEdicion = (index: number) => {
-    if (!nombreEditado.trim()) return;
-    const nuevos = [...vendedores];
-    nuevos[index].nombre = nombreEditado.trim();
-    actualizarVendedores(nuevos);
-    setEditandoIndex(null);
-  };
-
-  const toggleBloqueo = (index: number) => {
-    const nuevos = [...vendedores];
-    nuevos[index].bloqueado = !nuevos[index].bloqueado;
-    actualizarVendedores(nuevos);
-  };
-
-  const topVendedor = [...vendedores].sort((a, b) => obtenerVentas(b.nombre) - obtenerVentas(a.nombre))[0];
-  const totalVentasTop = topVendedor ? obtenerVentas(topVendedor.nombre) : 0;
+  const totalVentasTop = topVendedor ? obtenerVentas(topVendedor.username) : 0;
 
   return (
     <Fade in={true} timeout={800}>
@@ -158,7 +85,7 @@ export default function SellersPage() {
           Panel de <span style={{ color: '#80bc71' }}>Asesores Corporativos</span>
         </Typography>
 
-        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3, mb: 4 }}>
+        <Box sx={{ display: 'flex', gap: 3, mb: 4 }}>
           {/* CARD TOP SELLER */}
           <Paper elevation={0} sx={{ flex: 1, p: 3, borderRadius: "24px", background: "linear-gradient(135deg, #124a70 0%, #1d6ea5 100%)", color: "white", position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', gap: 2 }}>
             <StarsIcon sx={{ position: 'absolute', right: -10, top: -10, fontSize: 120, opacity: 0.1 }} />
@@ -166,28 +93,30 @@ export default function SellersPage() {
               <LeaderboardIcon sx={{ color: '#80bc71' }} />
             </Avatar>
             <Box>
-              <Typography variant="overline" sx={{ opacity: 0.8, fontWeight: 700 }}>{filtroFecha ? `Líder del día` : `Líder Actual`}</Typography>
-              <Typography variant="h6" sx={{ fontWeight: 900 }}>{topVendedor && totalVentasTop > 0 ? topVendedor.nombre : "Sin datos"}</Typography>
-              <Typography variant="body2" sx={{ opacity: 0.9 }}>{totalVentasTop} registros</Typography>
+              <Typography variant="overline" sx={{ opacity: 0.8, fontWeight: 700 }}>
+                {filtroFecha ? `Líder del día (${filtroFecha})` : `Líder Actual`}
+              </Typography>
+              <Typography variant="h6" sx={{ fontWeight: 900 }}>
+                {totalVentasTop > 0 ? topVendedor?.username : "Sin registros"}
+              </Typography>
+              <Typography variant="body2" sx={{ opacity: 0.9 }}>{totalVentasTop} ventas en este periodo</Typography>
             </Box>
           </Paper>
 
-          {/* FORMULARIO AGREGAR */}
-          <Paper elevation={0} sx={{ flex: 1.5, p: 3, borderRadius: "24px", bgcolor: "white", border: "1px solid #e2e8f0", display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-            <Stack direction="row" spacing={2}>
-              <TextField fullWidth label="Nuevo Asesor" variant="filled" InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }} value={nuevoNombre} onChange={(e) => setNuevoNombre(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && agregarVendedor()} />
-              <Button variant="contained" onClick={agregarVendedor} sx={{ borderRadius: '12px', px: 4, fontWeight: 800, bgcolor: '#80bc71', '&:hover': { bgcolor: '#6da35f' } }}>Registrar</Button>
-            </Stack>
-            {error && <Alert severity="error" sx={{ mt: 1, borderRadius: '10px' }}>{error}</Alert>}
+          {/* ESPACIO INFORMATIVO (Reemplaza al formulario de creación) */}
+          <Paper elevation={0} sx={{ flex: 1.5, p: 3, borderRadius: "24px", bgcolor: "#f8fafc", border: "1px dashed #cbd5e1", display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+              La gestión de nombres y estados se realiza desde el <b>Panel de Configuración de Cuentas</b>.
+            </Typography>
           </Paper>
         </Box>
 
-        {/* BARRA DE FILTROS ACTUALIZADA */}
+        {/* BARRA DE FILTROS */}
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 3 }} alignItems="center">
           <Paper elevation={0} sx={{ flex: 1.5, p: 1, px: 2, borderRadius: "16px", border: "1px solid #e2e8f0", display: 'flex', alignItems: 'center', width: '100%' }}>
             <SearchIcon sx={{ color: '#94a3b8', mr: 1 }} />
             <TextField 
-              placeholder="Nombre..." 
+              placeholder="Buscar por nombre..." 
               variant="standard" 
               fullWidth 
               InputProps={{ disableUnderline: true }}
@@ -196,12 +125,11 @@ export default function SellersPage() {
             />
           </Paper>
 
-          {/* NUEVO FILTRO DE FECHA (DÍA/MES) */}
           <Paper elevation={0} sx={{ flex: 1, p: 1, px: 2, borderRadius: "16px", border: "1px solid #e2e8f0", display: 'flex', alignItems: 'center', width: '100%' }}>
             <EventNoteIcon sx={{ color: '#124a70', mr: 1 }} />
             <TextField 
               type="date"
-              label="Ver ventas del día" 
+              label="Filtrar por fecha" 
               variant="standard" 
               fullWidth 
               InputLabelProps={{ shrink: true }}
@@ -215,16 +143,16 @@ export default function SellersPage() {
             <SortIcon sx={{ color: '#124a70', mr: 1 }} />
             <TextField 
               select 
-              label="Ordenar" 
+              label="Ordenar por" 
               variant="standard" 
               fullWidth 
               value={orden}
               onChange={(e) => setOrden(e.target.value)}
               InputProps={{ disableUnderline: true }}
             >
-              <MenuItem value="nombre">Alfabeto (A-Z)</MenuItem>
-              <MenuItem value="ventas">Ventas (Rango seleccionado)</MenuItem>
-              <MenuItem value="estado">Estado (Activos primero)</MenuItem>
+              <MenuItem value="ventas">Mayor número de ventas</MenuItem>
+              <MenuItem value="nombre">Orden Alfabético</MenuItem>
+              <MenuItem value="estado">Estado de la cuenta</MenuItem>
             </TextField>
           </Paper>
 
@@ -236,13 +164,10 @@ export default function SellersPage() {
               sx={{ 
                 height: '56px',
                 borderRadius: '16px', 
-                textTransform: 'none', 
                 fontWeight: 700,
-                px: 3,
                 color: '#64748b',
                 borderColor: '#e2e8f0',
-                '&:hover': { bgcolor: '#f1f5f9', borderColor: '#cbd5e1' },
-                whiteSpace: 'nowrap'
+                '&:hover': { bgcolor: '#f1f5f9' }
               }}
             >
               Limpiar
@@ -250,100 +175,63 @@ export default function SellersPage() {
           </Fade>
         </Stack>
 
-        <TableContainer component={Paper} sx={{ borderRadius: "24px", border: "1px solid #e2e8f0", overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+        <TableContainer component={Paper} sx={{ borderRadius: "24px", border: "1px solid #e2e8f0", boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
           <Table>
             <TableHead sx={{ bgcolor: "#f8fafc" }}>
               <TableRow>
                 <TableCell sx={{ fontWeight: 800 }}>IDENTIDAD</TableCell>
                 <TableCell align="center" sx={{ fontWeight: 800 }}>VENTAS {filtroFecha ? `(${filtroFecha})` : `TOTALES`}</TableCell>
-                <TableCell align="center" sx={{ fontWeight: 800 }}>ESTADO</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 800 }}>ACCIONES</TableCell>
+                <TableCell align="center" sx={{ fontWeight: 800 }}>ESTADO SISTEMA</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {vendedoresFiltrados.map((v) => {
-                const realIndex = vendedores.findIndex(vend => vend.nombre === v.nombre);
-                const estaEditando = editandoIndex === realIndex;
-                const ventas = obtenerVentas(v.nombre);
-
-                let chipLabel = "";
-                let chipColor: "error" | "success" | "default" = "default";
-                if (v.bloqueado) { chipLabel = "DE BAJA"; chipColor = "error"; } 
-                else if (ventas > 0) { chipLabel = "ACTIVO"; chipColor = "success"; } 
-                else { chipLabel = "SIN ACTIVIDAD"; chipColor = "default"; }
+                const ventas = obtenerVentas(v.username);
+                const esBloqueado = v.estado === "BLOQUEADO";
 
                 return (
-                  <TableRow key={v.nombre} sx={{ "&:hover": { bgcolor: "#f1f5f9" }, opacity: v.bloqueado ? 0.6 : 1, transition: '0.3s' }}>
+                  <TableRow key={v.id} sx={{ "&:hover": { bgcolor: "#f1f5f9" }, opacity: esBloqueado ? 0.6 : 1 }}>
                     <TableCell>
                       <Stack direction="row" spacing={2} alignItems="center">
-                        <Avatar sx={{ bgcolor: v.bloqueado ? '#94a3b8' : '#1d6ea5', width: 38, height: 38, fontWeight: 800 }}>
-                          {v.nombre.charAt(0).toUpperCase()}
+                        <Avatar sx={{ bgcolor: esBloqueado ? '#94a3b8' : '#1d6ea5', width: 38, height: 38, fontWeight: 800 }}>
+                          {v.username.charAt(0).toUpperCase()}
                         </Avatar>
-                        {estaEditando ? (
-                          <TextField size="small" variant="standard" value={nombreEditado} onChange={(e) => setNombreEditado(e.target.value)} autoFocus />
-                        ) : (
-                          <Box>
-                            <Typography sx={{ fontWeight: 700, color: v.bloqueado ? 'text.secondary' : 'text.primary', textDecoration: v.bloqueado ? 'line-through' : 'none' }}>
-                              {v.nombre}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">Desde: {v.fechaAlta}</Typography>
-                          </Box>
-                        )}
+                        <Box>
+                          <Typography sx={{ fontWeight: 700, textDecoration: esBloqueado ? 'line-through' : 'none' }}>
+                            {v.username}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">{v.email}</Typography>
+                        </Box>
                       </Stack>
                     </TableCell>
 
                     <TableCell align="center">
-                      <Typography sx={{ fontWeight: 800, color: ventas > 0 ? '#1d6ea5' : '#94a3b8' }}>{ventas}</Typography>
+                      <Typography sx={{ fontWeight: 800, color: ventas > 0 ? '#1d6ea5' : '#94a3b8', fontSize: '1.1rem' }}>
+                        {ventas}
+                      </Typography>
                     </TableCell>
 
                     <TableCell align="center">
-                      <Chip label={chipLabel} color={chipColor} size="small" sx={{ fontWeight: 900, borderRadius: '6px', fontSize: '0.65rem', px: 1 }} />
-                    </TableCell>
-
-                    <TableCell align="right">
-                      <Stack direction="row" spacing={1} justifyContent="flex-end">
-                        {estaEditando ? (
-                          <>
-                            <IconButton onClick={() => guardarEdicion(realIndex)} sx={{ color: '#80bc71' }}><SaveIcon /></IconButton>
-                            <IconButton onClick={() => setEditandoIndex(null)} sx={{ color: '#64748b' }}><CancelIcon /></IconButton>
-                          </>
-                        ) : (
-                          <>
-                            <Tooltip title={v.bloqueado ? "Reactivar" : "Dar de Baja"}>
-                              <IconButton onClick={() => toggleBloqueo(realIndex)} sx={{ color: v.bloqueado ? '#80bc71' : '#f59e0b' }}>
-                                {v.bloqueado ? <CheckCircleIcon /> : <BlockIcon />}
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Editar"><IconButton onClick={() => iniciarEdicion(realIndex, v.nombre)} color="primary"><EditIcon fontSize="small" /></IconButton></Tooltip>
-                            <Tooltip title="Eliminar"><IconButton onClick={() => handleOpenDelete(realIndex)} sx={{ color: '#ef4444' }}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
-                          </>
-                        )}
-                      </Stack>
+                      <Chip 
+                        label={v.estado} 
+                        color={esBloqueado ? "error" : "success"} 
+                        size="small" 
+                        sx={{ fontWeight: 900, borderRadius: '6px', fontSize: '0.65rem' }} 
+                      />
                     </TableCell>
                   </TableRow>
                 );
               })}
+              {vendedoresFiltrados.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={3} align="center" sx={{ py: 5 }}>
+                    <Typography color="text.secondary">No se encontraron asesores registrados.</Typography>
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </TableContainer>
-
-        {/* DIALOG DE CONFIRMACIÓN */}
-        <Dialog open={openDeleteDialog} onClose={() => setOpenDeleteDialog(false)} PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}>
-          <DialogTitle sx={{ color: '#ef4444', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <WarningAmberIcon fontSize="large" /> ¿Confirmar Eliminación?
-          </DialogTitle>
-          <DialogContent>
-            <DialogContentText>
-              Estás a punto de borrar a <strong>{indexAEliminar !== null && vendedores[indexAEliminar]?.nombre}</strong>.
-              <br /><br />
-              Esta acción es irreversible y podría afectar el historial.
-            </DialogContentText>
-          </DialogContent>
-          <DialogActions sx={{ p: 3 }}>
-            <Button onClick={() => setOpenDeleteDialog(false)} sx={{ color: '#64748b', fontWeight: 700 }}>Cancelar</Button>
-            <Button onClick={confirmarEliminacion} variant="contained" sx={{ bgcolor: '#ef4444', borderRadius: '10px', px: 3, fontWeight: 700 }}>Sí, Eliminar</Button>
-          </DialogActions>
-        </Dialog>
       </Box>
     </Fade>
   );
