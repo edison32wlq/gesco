@@ -18,17 +18,20 @@ import EditIcon from "@mui/icons-material/Edit";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import SearchIcon from "@mui/icons-material/Search";
 import PersonIcon from '@mui/icons-material/Person';
-import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
-import VisibilityIcon from '@mui/icons-material/Visibility'; // <-- NUEVO ICONO
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import DateRangeIcon from '@mui/icons-material/DateRange';
 
 export default function MultiplyPage() {
   const [registros, setRegistros] = useState<any[]>([]);
   const [vendedores, setVendedores] = useState<string[]>([]);
   const [filtroVendedor, setFiltroVendedor] = useState<string | null>(""); 
-  const [filtroFecha, setFiltroFecha] = useState("");
-  const [filtroNombre, setFiltroNombre] = useState(""); // <-- NUEVO FILTRO TEXTO
+  const [filtroNombre, setFiltroNombre] = useState(""); 
+  
+  // RANGO DE FECHAS
+  const [fechaDesde, setFechaDesde] = useState("");
+  const [fechaHasta, setFechaHasta] = useState("");
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
@@ -70,56 +73,100 @@ export default function MultiplyPage() {
     setOpenEdit(false);
   };
 
-  // Lógica de filtrado ACTUALIZADA con búsqueda por nombre/apellido
+  // LÓGICA DE FILTRADO
   const registrosFiltrados = registros.filter(r => {
     const nombreCompleto = `${r.nombre} ${r.apellido}`.toLowerCase();
     const coincideNombre = nombreCompleto.includes(filtroNombre.toLowerCase());
     const coincideVendedor = !filtroVendedor || r.vendedor === filtroVendedor;
-    const coincideFecha = filtroFecha === "" || r.fechaFiltro === filtroFecha;
-    return coincideNombre && coincideVendedor && coincideFecha;
+    
+    const fechaRegistro = r.fechaFiltro; 
+    const coincideDesde = !fechaDesde || fechaRegistro >= fechaDesde;
+    const coincideHasta = !fechaHasta || fechaRegistro <= fechaHasta;
+
+    return coincideNombre && coincideVendedor && coincideDesde && coincideHasta;
   });
 
   const handleDownloadClick = (event: React.MouseEvent<HTMLButtonElement>) => { setAnchorEl(event.currentTarget); };
   const handleCloseMenu = () => { setAnchorEl(null); };
 
+  // --- ACTUALIZACIÓN: EXPORTACIÓN CON FORMATO TÉCNICO DE CARGA ---
   const exportToExcel = () => {
     const dataToExport = registrosFiltrados.map(r => ({
-      Nombre: r.nombre, 
-      Apellido: r.apellido, 
-      Cedula: r.cedula,
-      Experiencia_Docente: r.experienciaDocente || "No especificado",
-      Correo: r.correo, 
-      Asesor: r.vendedor, 
-      Fecha: r.fechaFiltro, 
-      Estado: r.estado || "INGRESADO"
+      FirstName: r.nombre || "", 
+      LastName: r.apellido || "", 
+      Programa: r.posgrado || "",
+      Identification_type__c: r.tipoIdentificacion === "Cédula" ? "IDEC" : "PASS",
+      Personal_identification__c: r.cedula || "",
+      Email: r.correo || "", 
+      Phone: r.telefonoConvencional || "",
+      MobilePhone: r.telefono || "",
+      LeadSource: "Activaciones",
+      Tipo_origen__c: "GESCO",
+      Status: "Registrado",
+      Habeas_data__c: "true",
+      Company: "UTE"
     }));
+
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Registros");
-    XLSX.writeFile(workbook, `Reporte_GESCO_${new Date().toLocaleDateString()}.xlsx`);
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Leads");
+    
+    // Ajustar anchos de columna para que se vea profesional
+    const wscols = [
+      {wch: 15}, {wch: 15}, {wch: 40}, {wch: 20}, {wch: 20}, 
+      {wch: 30}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}, 
+      {wch: 15}, {wch: 15}, {wch: 10}
+    ];
+    worksheet['!cols'] = wscols;
+
+    XLSX.writeFile(workbook, `Carga_Leads_GESCO_${new Date().toISOString().split('T')[0]}.xlsx`);
     handleCloseMenu();
   };
 
   const exportToPDF = () => {
-    const doc = new jsPDF();
-    doc.text("GESCO - Reporte de Seguimiento", 14, 15);
-    const tableColumn = ["Docente", "ID/Cédula", "Asesor", "Exp. Docente", "Estado"];
+    const doc = new jsPDF('l', 'mm', 'a4'); 
+    
+    doc.setFontSize(18);
+    doc.setTextColor(18, 74, 112);
+    doc.text("GESCO - Reporte de Seguimiento Detallado", 14, 15);
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Fecha de reporte: ${new Date().toLocaleString()}`, 14, 22);
+
+    const tableColumn = ["Nombre Completo", "Cédula", "Correo", "Asesor", "Exp. Docente", "Fecha", "Estado"];
     const tableRows = registrosFiltrados.map(r => [
         `${r.nombre} ${r.apellido}`, 
         r.cedula, 
+        r.correo,
         r.vendedor, 
         r.experienciaDocente || "N/A",
+        r.fechaFiltro || "N/A",
         r.estado?.toUpperCase() || "INGRESADO"
     ]);
+
     autoTable(doc, {
-      head: [tableColumn], body: tableRows, startY: 25,
-      headStyles: { fillColor: [18, 74, 112], textColor: [255, 255, 255] },
+      head: [tableColumn],
+      body: tableRows,
+      startY: 30,
+      theme: 'grid',
+      headStyles: { fillColor: [18, 74, 112], textColor: [255, 255, 255], fontStyle: 'bold' },
+      styles: { fontSize: 8, cellPadding: 3 },
+      alternateRowStyles: { fillColor: [245, 247, 250] },
+      didDrawPage: (_data) => {
+        const pageCount = (doc as any).internal.getNumberOfPages();
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        doc.text("GESCO UTE - Este documento contiene información confidencial de carácter institucional.", 14, 200);
+        const str = `Página ${pageCount}`;
+        doc.text(str, 283, 200, { align: "right" });
+      }
     });
+
     doc.save(`Reporte_GESCO_${new Date().toLocaleDateString()}.pdf`);
     handleCloseMenu();
   };
 
-  // Función para ver comprobante
   const verComprobante = (base64: string) => {
     const win = window.open();
     win?.document.write(`<iframe src="${base64}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
@@ -175,61 +222,106 @@ export default function MultiplyPage() {
           </Box>
         </Paper>
 
-        {/* FILTROS ACTUALIZADOS */}
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 4 }}>
-          {/* BUSQUEDA POR NOMBRE/APELLIDO */}
-          <Paper sx={{ p: 1.5, px: 3, borderRadius: "20px", display: 'flex', alignItems: 'center', flex: 2, border: "1px solid rgba(0,0,0,0.05)" }}>
-            <SearchIcon sx={{ color: "#124a70", mr: 2, fontSize: 28 }} />
-            <TextField 
-                fullWidth 
-                variant="standard" 
-                placeholder="Buscar por nombre o apellido..."
-                value={filtroNombre}
-                onChange={(e) => { setFiltroNombre(e.target.value); setPage(0); }}
-                InputProps={{ disableUnderline: true }}
-                sx={{ "& input::placeholder": { fontWeight: 600, color: "#124a70", opacity: 0.5 } }}
-            />
-          </Paper>
-
-          <Paper sx={{ p: 1.5, px: 3, borderRadius: "20px", display: 'flex', alignItems: 'center', flex: 2, border: "1px solid rgba(0,0,0,0.05)" }}>
-            <PersonIcon sx={{ color: "#124a70", mr: 2 }} />
-            <Autocomplete
-              fullWidth
-              options={vendedores}
-              value={filtroVendedor}
-              onChange={(_event, newValue) => {
-                setFiltroVendedor(newValue);
-                setPage(0);
-              }}
-              renderInput={(params) => (
-                <TextField 
-                  {...params} 
-                  label="Filtrar por Asesor" 
+        {/* FILTROS */}
+        <Stack spacing={2} sx={{ mb: 4 }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+            <Paper sx={{ p: 1.5, px: 3, borderRadius: "20px", display: 'flex', alignItems: 'center', flex: 2, border: "1px solid rgba(0,0,0,0.05)" }}>
+              <SearchIcon sx={{ color: "#124a70", mr: 2, fontSize: 28 }} />
+              <TextField 
+                  fullWidth 
                   variant="standard" 
-                  InputProps={{ ...params.InputProps, disableUnderline: true }}
-                  sx={{ "& .MuiInputLabel-root": { fontWeight: 700, color: "#124a70" } }}
-                />
-              )}
-            />
-          </Paper>
+                  placeholder="Buscar por nombre o apellido..."
+                  value={filtroNombre}
+                  onChange={(e) => { setFiltroNombre(e.target.value); setPage(0); }}
+                  InputProps={{ disableUnderline: true }}
+                  sx={{ "& input::placeholder": { fontWeight: 600, color: "#124a70", opacity: 0.5 } }}
+              />
+            </Paper>
 
-          <Paper sx={{ p: 1.5, px: 3, borderRadius: "20px", display: 'flex', alignItems: 'center', flex: 1, border: "1px solid rgba(0,0,0,0.05)" }}>
-            <CalendarTodayIcon sx={{ color: "#124a70", mr: 2 }} />
-            <TextField type="date" variant="standard" label="Fecha" value={filtroFecha} onChange={(e) => { setFiltroFecha(e.target.value); setPage(0); }} fullWidth InputLabelProps={{ shrink: true }} InputProps={{ disableUnderline: true }} sx={{ "& .MuiInputLabel-root": { fontWeight: 700, color: "#124a70" } }} />
-          </Paper>
+            <Paper sx={{ p: 1.5, px: 3, borderRadius: "20px", display: 'flex', alignItems: 'center', flex: 2, border: "1px solid rgba(0,0,0,0.05)" }}>
+              <PersonIcon sx={{ color: "#124a70", mr: 2 }} />
+              <Autocomplete
+                fullWidth
+                options={vendedores}
+                value={filtroVendedor}
+                onChange={(_event, newValue) => {
+                  setFiltroVendedor(newValue);
+                  setPage(0);
+                }}
+                renderInput={(params) => (
+                  <TextField 
+                    {...params} 
+                    label="Filtrar por Asesor" 
+                    variant="standard" 
+                    InputProps={{ ...params.InputProps, disableUnderline: true }}
+                    sx={{ "& .MuiInputLabel-root": { fontWeight: 700, color: "#124a70" } }}
+                  />
+                )}
+              />
+            </Paper>
+          </Stack>
 
-          <Box sx={{ p: 2, px: 4, borderRadius: "20px", bgcolor: "#124a70", color: "#fff", display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 120, boxShadow: "0 10px 20px rgba(18, 74, 112, 0.2)" }}>
-            <Typography variant="caption" sx={{ opacity: 0.8, fontWeight: 800, letterSpacing: 1 }}>TOTAL</Typography>
-            <Typography variant="h4" sx={{ fontWeight: 900, lineHeight: 1 }}>{registrosFiltrados.length}</Typography>
-          </Box>
+          {/* RANGO DE FECHAS */}
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+            <Paper sx={{ p: 1.5, px: 3, borderRadius: "20px", display: 'flex', alignItems: 'center', flex: 1, border: "1px solid rgba(0,0,0,0.05)" }}>
+              <DateRangeIcon sx={{ color: "#124a70", mr: 2 }} />
+              <TextField 
+                type="date" 
+                variant="standard" 
+                label="Desde" 
+                value={fechaDesde} 
+                onChange={(e) => { setFechaDesde(e.target.value); setPage(0); }} 
+                fullWidth 
+                InputLabelProps={{ shrink: true }} 
+                InputProps={{ disableUnderline: true }} 
+                sx={{ "& .MuiInputLabel-root": { fontWeight: 700, color: "#124a70" } }} 
+              />
+            </Paper>
+
+            <Paper sx={{ p: 1.5, px: 3, borderRadius: "20px", display: 'flex', alignItems: 'center', flex: 1, border: "1px solid rgba(0,0,0,0.05)" }}>
+              <DateRangeIcon sx={{ color: "#124a70", mr: 2 }} />
+              <TextField 
+                type="date" 
+                variant="standard" 
+                label="Hasta" 
+                value={fechaHasta} 
+                inputProps={{ min: fechaDesde }} 
+                onChange={(e) => {
+                    if (fechaDesde && e.target.value < fechaDesde) {
+                        alert("La fecha final no puede ser anterior a la inicial.");
+                        return;
+                    }
+                    setFechaHasta(e.target.value); 
+                    setPage(0); 
+                }} 
+                fullWidth 
+                InputLabelProps={{ shrink: true }} 
+                InputProps={{ disableUnderline: true }} 
+                sx={{ "& .MuiInputLabel-root": { fontWeight: 700, color: "#124a70" } }} 
+              />
+            </Paper>
+
+            <Button 
+              variant="outlined"
+              onClick={() => { setFechaDesde(""); setFechaHasta(""); setFiltroNombre(""); setFiltroVendedor(""); }}
+              sx={{ borderRadius: "15px", fontWeight: 700, color: "#124a70", borderColor: "#124a70", px: 3 }}
+            >
+              Limpiar
+            </Button>
+
+            <Box sx={{ p: 2, px: 4, borderRadius: "20px", bgcolor: "#124a70", color: "#fff", display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 120, boxShadow: "0 10px 20px rgba(18, 74, 112, 0.2)" }}>
+              <Typography variant="caption" sx={{ opacity: 0.8, fontWeight: 800, letterSpacing: 1 }}>TOTAL</Typography>
+              <Typography variant="h4" sx={{ fontWeight: 900, lineHeight: 1 }}>{registrosFiltrados.length}</Typography>
+            </Box>
+          </Stack>
         </Stack>
 
-        {/* TABLA PREMIUM */}
+        {/* TABLA */}
         <TableContainer component={Paper} sx={{ borderRadius: "28px", boxShadow: "0 20px 50px rgba(0,0,0,0.08)", border: "1px solid rgba(0,0,0,0.05)" }}>
           <Table>
             <TableHead sx={{ bgcolor: "#f8fafc" }}>
               <TableRow>
-                <TableCell sx={{ fontWeight: 800, color: "#64748b", py: 3 }}>DATOS DEL DOCENTE</TableCell>
+                <TableCell sx={{ fontWeight: 800, color: "#64748b", py: 3 }}>DATOS DEL CLIENTE</TableCell>
                 <TableCell sx={{ fontWeight: 800, color: "#64748b" }}>ASESOR</TableCell>
                 <TableCell sx={{ fontWeight: 800, color: "#64748b" }}>EXP. DOCENTE</TableCell>
                 <TableCell sx={{ fontWeight: 800, color: "#64748b" }}>ESTADO</TableCell>
@@ -261,7 +353,6 @@ export default function MultiplyPage() {
                   </TableCell>
                   <TableCell align="right" sx={{ pr: 3 }}>
                     <Stack direction="row" spacing={1} justifyContent="flex-end">
-                      {/* BOTÓN VER COMPROBANTE */}
                       <Tooltip title="Ver Comprobante">
                         <IconButton 
                             onClick={() => verComprobante(row.comprobante)}
@@ -270,7 +361,6 @@ export default function MultiplyPage() {
                             <VisibilityIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
-
                       <Tooltip title="Editar"><IconButton onClick={() => handleOpenEdit(row)} sx={{ color: "#124a70", bgcolor: "#f1f5f9", "&:hover": { bgcolor: "#124a70", color: "white" } }}><EditIcon fontSize="small" /></IconButton></Tooltip>
                       <Tooltip title="Eliminar"><IconButton onClick={() => eliminarRegistro(row.id)} sx={{ color: "#ef4444", bgcolor: "#fef2f2", "&:hover": { bgcolor: "#ef4444", color: "white" } }}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
                     </Stack>
@@ -284,17 +374,15 @@ export default function MultiplyPage() {
 
         {/* DIALOG DE EDICIÓN */}
         <Dialog open={openEdit} onClose={() => setOpenEdit(false)} fullWidth maxWidth="xs" PaperProps={{ sx: { borderRadius: '28px', p: 2 } }}>
-          <DialogTitle sx={{ fontWeight: 900, fontSize: "1.5rem", color: "#124a70" }}>Editar Docente</DialogTitle>
+          <DialogTitle sx={{ fontWeight: 900, fontSize: "1.5rem", color: "#124a70" }}>Editar Cliente</DialogTitle>
           <DialogContent>
             <Stack spacing={3} sx={{ mt: 2 }}>
               <TextField label="Nombre" fullWidth variant="outlined" value={selectedReg?.nombre || ""} onChange={(e) => setSelectedReg({...selectedReg, nombre: e.target.value})} sx={{ "& .MuiOutlinedInput-root": { borderRadius: "12px" } }} />
               <TextField label="Apellido" fullWidth variant="outlined" value={selectedReg?.apellido || ""} onChange={(e) => setSelectedReg({...selectedReg, apellido: e.target.value})} sx={{ "& .MuiOutlinedInput-root": { borderRadius: "12px" } }} />
-              
               <TextField select label="¿Más de 2 años Exp. Docente?" fullWidth value={selectedReg?.experienciaDocente || "No"} onChange={(e) => setSelectedReg({...selectedReg, experienciaDocente: e.target.value})} sx={{ "& .MuiOutlinedInput-root": { borderRadius: "12px" } }}>
                 <MenuItem value="Si">Sí</MenuItem>
                 <MenuItem value="No">No</MenuItem>
               </TextField>
-
               <TextField select label="Estado de Admisión" fullWidth value={selectedReg?.estado || "Ingresado"} onChange={(e) => setSelectedReg({...selectedReg, estado: e.target.value})} sx={{ "& .MuiOutlinedInput-root": { borderRadius: "12px" } }}>
                 <MenuItem value="Ingresado">Ingresado</MenuItem>
                 <MenuItem value="Aprobado">Aprobado</MenuItem>

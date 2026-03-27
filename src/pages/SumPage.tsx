@@ -115,23 +115,43 @@ export default function RegisterPage() {
       }
     }
 
-    const actuales = JSON.parse(localStorage.getItem("registros") || "[]");
-    const existe = actuales.find((r: any) => r.cedula === form.cedula);
+    // --- NUEVA VALIDACIÓN: EVITAR DUPLICADOS ---
+    const registrosActuales = JSON.parse(localStorage.getItem("registros") || "[]");
+    const yaExiste = registrosActuales.find((reg: any) => reg.cedula === form.cedula);
 
-    if (existe) {
-      setError("Error: Este número de identificación ya se encuentra registrado.");
+    if (yaExiste) {
+      setError(`Error: La persona con identificación ${form.cedula} ya se encuentra registrada en el sistema.`);
       return;
     }
 
+    // --- NUEVA LÓGICA DE ALMACENAMIENTO (VARIABLES TÉCNICAS) ---
+    // Mapeamos los campos del formulario a los nombres requeridos por el formato Excel/Salesforce
     const nuevoRegistro = { 
       ...form, 
       id: Date.now(),
       comprobante: file, 
       fechaFiltro: new Date().toISOString().split('T')[0],
-      estado: "Ingresado" 
+      estado: "Ingresado",
+      
+      // Variables solicitadas para coincidir con el formato de carga:
+      FirstName: form.nombre,
+      LastName: form.apellido,
+      Programa: form.posgrado,
+      Identification_type__c: form.tipoIdentificacion === "Cédula" ? "IDEC" : "PASS",
+      Personal_identification__c: form.cedula,
+      Email: form.correo,
+      Phone: form.telefonoConvencional || "",
+      MobilePhone: form.telefono,
+      Status: "Registrado",
+      
+      // Variables predeterminadas (Ocultas en UI pero guardadas en datos):
+      LeadSource: "Activaciones",
+      Tipo_origen__c: "GESCO",
+      Company: "UTE",
+      Habeas_data__c: true 
     };
 
-    localStorage.setItem("registros", JSON.stringify([...actuales, nuevoRegistro]));
+    localStorage.setItem("registros", JSON.stringify([...registrosActuales, nuevoRegistro]));
     setTempNombre(form.nombre); 
     setOpen(true);
     setForm({ 
