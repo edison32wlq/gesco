@@ -22,18 +22,29 @@ export default function RegisterPage() {
     correo: "", 
     telefono: "", 
     telefonoConvencional: "",
-    vendedor: ""
+    vendedor: "",
+    medioCaptacion: "" // <-- NUEVO CAMPO
   });
   
   const [vendedores, setVendedores] = useState<any[]>([]);
   
-  // --- ACTUALIZACIÓN: MAESTRÍAS OFRECIDAS ---
+  // MAESTRÍAS OFRECIDAS
   const [posgrados] = useState<string[]>([
     "Maestría en Educación Inclusiva, mención Inclusión Educativa y Atención a la Diversidad",
     "Maestría en Pedagogía, mención Docencia e Innovación Educativa",
     "Maestría en Educación, mención Gestión del Aprendizaje",
     "Pendiente"
   ]);
+
+  // OPCIONES DE MEDIO DE CAPTACIÓN
+  const mediosCaptacion = [
+    "Recomendación",
+    "Redes Sociales",
+    "Publicidad Exterior",
+    "Correo Electrónico",
+    "Llamada Telefónica",
+    "Otros"
+  ];
 
   const [file, setFile] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +76,6 @@ export default function RegisterPage() {
     return total === digitoVerificador || (total === 10 && digitoVerificador === 0);
   };
 
-  // --- ACTUALIZACIÓN: CONTROL DE PESO DE ARCHIVO (2MB) ---
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setError(null);
     if (e.target.files && e.target.files[0]) {
@@ -74,7 +84,7 @@ export default function RegisterPage() {
 
       if (selectedFile.size > limitInBytes) {
         setError("El archivo es muy pesado. El límite máximo permitido es de 2MB.");
-        e.target.value = ""; // Limpiar el input
+        e.target.value = ""; 
         setFile(null);
         return;
       }
@@ -88,20 +98,17 @@ export default function RegisterPage() {
   const guardarRegistro = () => {
     setError(null);
 
-    // Validación de campos básicos
-    if (!form.nombre || !form.apellido || !form.cedula || !form.vendedor || !file || !form.posgrado || !form.correo) {
+    if (!form.nombre || !form.apellido || !form.cedula || !form.vendedor || !file || !form.posgrado || !form.correo || !form.medioCaptacion) {
       setError("Faltan datos obligatorios para proceder con el registro.");
       return;
     }
 
-    // --- ACTUALIZACIÓN: VALIDACIÓN DE CORREO ---
     const regexCorreo = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!regexCorreo.test(form.correo)) {
       setError("El formato del correo electrónico no es válido.");
       return;
     }
 
-    // Validación de Identificación
     if (form.tipoIdentificacion === "Cédula") {
       if (!validarCedulaEcuatoriana(form.cedula)) {
         setError("La cédula ingresada no es válida para Ecuador.");
@@ -115,7 +122,6 @@ export default function RegisterPage() {
       }
     }
 
-    // --- NUEVA VALIDACIÓN: EVITAR DUPLICADOS ---
     const registrosActuales = JSON.parse(localStorage.getItem("registros") || "[]");
     const yaExiste = registrosActuales.find((reg: any) => reg.cedula === form.cedula);
 
@@ -124,8 +130,6 @@ export default function RegisterPage() {
       return;
     }
 
-    // --- NUEVA LÓGICA DE ALMACENAMIENTO (VARIABLES TÉCNICAS) ---
-    // Mapeamos los campos del formulario a los nombres requeridos por el formato Excel/Salesforce
     const nuevoRegistro = { 
       ...form, 
       id: Date.now(),
@@ -133,7 +137,7 @@ export default function RegisterPage() {
       fechaFiltro: new Date().toISOString().split('T')[0],
       estado: "Ingresado",
       
-      // Variables solicitadas para coincidir con el formato de carga:
+      // Variables para Excel/Salesforce:
       FirstName: form.nombre,
       LastName: form.apellido,
       Programa: form.posgrado,
@@ -143,9 +147,7 @@ export default function RegisterPage() {
       Phone: form.telefonoConvencional || "",
       MobilePhone: form.telefono,
       Status: "Registrado",
-      
-      // Variables predeterminadas (Ocultas en UI pero guardadas en datos):
-      LeadSource: "Activaciones",
+      LeadSource: form.medioCaptacion, // Se usa el medio elegido como LeadSource
       Tipo_origen__c: "GESCO",
       Company: "UTE",
       Habeas_data__c: true 
@@ -157,7 +159,7 @@ export default function RegisterPage() {
     setForm({ 
       nombre: "", apellido: "", tipoIdentificacion: "Cédula", cedula: "", 
       posgrado: "", experiencia: "", experienciaDocente: "No", correo: "", 
-      telefono: "", telefonoConvencional: "", vendedor: "" 
+      telefono: "", telefonoConvencional: "", vendedor: "", medioCaptacion: ""
     });
     setFile(null);
   };
@@ -197,7 +199,6 @@ export default function RegisterPage() {
         )}
 
         <Stack spacing={2.5} textAlign="left">
-          {/* Nombres y Apellidos */}
           <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
             <TextField label="Nombres" fullWidth variant="filled" 
               InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
@@ -209,7 +210,6 @@ export default function RegisterPage() {
             />
           </Box>
 
-          {/* Tipo ID y Número */}
           <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
             <TextField 
               label="Tipo ID" select sx={{ width: { xs: '100%', sm: '40%' } }} variant="filled"
@@ -227,7 +227,6 @@ export default function RegisterPage() {
             />
           </Box>
 
-          {/* Maestría Select */}
           <TextField 
             label="Maestría / Posgrado" select fullWidth variant="filled" 
             InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
@@ -237,7 +236,6 @@ export default function RegisterPage() {
             {posgrados.map((p, i) => <MenuItem key={i} value={p}>{p}</MenuItem>)}
           </TextField>
 
-          {/* Teléfonos */}
           <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
             <TextField label="WhatsApp / Celular" fullWidth variant="filled" 
               InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
@@ -249,7 +247,6 @@ export default function RegisterPage() {
             />
           </Box>
 
-          {/* Correo y Experiencia */}
           <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
             <TextField label="Correo Electrónico" fullWidth variant="filled" 
               InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
@@ -267,25 +264,31 @@ export default function RegisterPage() {
             </TextField>
           </Box>
 
-          {/* Asesor */}
-          <TextField 
-            label="Asesor GESCO Responsable" select fullWidth variant="filled" 
-            InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
-            value={form.vendedor} onChange={e => setForm({...form, vendedor: e.target.value})}
-          >
-            <MenuItem value="" disabled>Seleccione un asesor</MenuItem>
-            {vendedores.length > 0 ? (
-              vendedores.map((v, i) => (
-                <MenuItem key={i} value={v.username}>
-                  {v.username}
-                </MenuItem>
-              ))
-            ) : (
-              <MenuItem disabled value="">No hay asesores registrados</MenuItem>
-            )}
-          </TextField>
+          {/* ASESOR Y MEDIO DE CAPTACIÓN */}
+          <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
+            <TextField 
+              label="Asesor GESCO Responsable" select fullWidth variant="filled" 
+              InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
+              value={form.vendedor} onChange={e => setForm({...form, vendedor: e.target.value})}
+            >
+              <MenuItem value="" disabled>Seleccione un asesor</MenuItem>
+              {vendedores.map((v, i) => (
+                <MenuItem key={i} value={v.username}>{v.username}</MenuItem>
+              ))}
+            </TextField>
+
+            <TextField 
+              label="¿Cómo se enteró?" select fullWidth variant="filled" 
+              InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
+              value={form.medioCaptacion} onChange={e => setForm({...form, medioCaptacion: e.target.value})}
+            >
+              <MenuItem value="" disabled>Seleccione una opción</MenuItem>
+              {mediosCaptacion.map((m, i) => (
+                <MenuItem key={i} value={m}>{m}</MenuItem>
+              ))}
+            </TextField>
+          </Box>
           
-          {/* Carga de Archivo */}
           <Box sx={{ 
             p: 3, borderRadius: '16px', border: '2px dashed #1d6ea5', 
             bgcolor: 'rgba(29, 110, 165, 0.03)', textAlign: 'center'
@@ -311,7 +314,6 @@ export default function RegisterPage() {
         </Stack>
       </Paper>
 
-      {/* Dialogo de Éxito */}
       <Dialog open={open} onClose={() => setOpen(false)} PaperProps={{ sx: { borderRadius: '28px' } }}>
         <DialogContent sx={{ textAlign: 'center', p: 5 }}>
           <CheckCircleOutlineIcon sx={{ fontSize: 60, color: '#80bc71', mb: 2 }} />

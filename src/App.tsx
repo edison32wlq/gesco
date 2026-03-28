@@ -173,7 +173,7 @@ export default function App() {
             <Button component={NavLink} to="/" end sx={linkBtnSx}>Inicio</Button>
             <Button component={NavLink} to="/registro" sx={linkBtnSx}>Registro Maestría</Button>
             
-            {(user?.rol === 'superadmin' || user?.rol === 'ute') && (
+            {(user?.rol === 'superadmin' || user?.rol === 'administrador') && (
               <>
                 <Button 
                   onClick={handleOpenMenu}
@@ -256,9 +256,9 @@ export default function App() {
           <Routes>
             <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
             <Route path="/registro" element={<ProtectedRoute><RegisterPage /></ProtectedRoute>} />
-            <Route path="/seguimiento" element={<ProtectedRoute>{(user?.rol === 'superadmin' || user?.rol === 'ute') ? <MultiplyPage /> : <Navigate to="/" />}</ProtectedRoute>} />
-            <Route path="/vendedores" element={<ProtectedRoute>{(user?.rol === 'superadmin' || user?.rol === 'ute') ? <SellersPage /> : <Navigate to="/" />}</ProtectedRoute>} />
-            <Route path="/gestion-cuentas" element={<ProtectedRoute>{(user?.rol === 'superadmin' || user?.rol === 'ute') ? <UsersManagementPage /> : <Navigate to="/" />}</ProtectedRoute>} />
+            <Route path="/seguimiento" element={<ProtectedRoute>{(user?.rol === 'superadmin' || user?.rol === 'administrador') ? <MultiplyPage /> : <Navigate to="/" />}</ProtectedRoute>} />
+            <Route path="/vendedores" element={<ProtectedRoute>{(user?.rol === 'superadmin' || user?.rol === 'administrador') ? <SellersPage /> : <Navigate to="/" />}</ProtectedRoute>} />
+            <Route path="/gestion-cuentas" element={<ProtectedRoute>{(user?.rol === 'superadmin' || user?.rol === 'administrador') ? <UsersManagementPage /> : <Navigate to="/" />}</ProtectedRoute>} />
             <Route path="/mis-ventas" element={<ProtectedRoute>{(user?.rol === 'asesor' || user?.rol === 'superadmin') ? <MySalesPage /> : <Navigate to="/" />}</ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>

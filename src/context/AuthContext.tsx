@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 
 // 1. Exportamos el tipo de forma independiente
-export type RolOficial = "superadmin" | "ute" | "usuario" | "asesor";
+export type RolOficial = "superadmin" | "administrador" | "usuario" | "asesor";
 
 export interface User {
   id?: string | number;

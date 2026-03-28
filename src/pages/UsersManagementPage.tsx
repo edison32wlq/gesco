@@ -14,9 +14,10 @@ import EditIcon from '@mui/icons-material/Edit';
 import ShieldIcon from '@mui/icons-material/Shield';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import KeyIcon from '@mui/icons-material/Key';
+import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 
 // 1. DEFINICIÓN DE TIPOS
-type RolOficial = 'superadmin' | 'ute' | 'usuario' | 'asesor';
+type RolOficial = 'superadmin' | 'administrador' | 'usuario' | 'asesor';
 
 interface Usuario {
   id: string | number;
@@ -28,12 +29,36 @@ interface Usuario {
   fechaAlta: string;
 }
 
+// 2. CONFIGURACIÓN DE ESTILOS POR ROL
+const ROL_STYLES: Record<RolOficial, { bg: string; color: string; avatar: string }> = {
+  superadmin: {
+    bg: '#fee2e2',
+    color: '#991b1b',
+    avatar: '#1e293b'
+  },
+  administrador: {
+    bg: '#dcfce7',
+    color: '#166534',
+    avatar: '#124a70'
+  },
+  asesor: {
+    bg: '#fef3c7',
+    color: '#92400e',
+    avatar: '#b45309'
+  },
+  usuario: {
+    bg: '#e0f2fe',
+    color: '#075985',
+    avatar: '#1d6ea5'
+  }
+};
+
 export default function UsersManagementPage() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [openEdit, setOpenEdit] = useState(false);
   const [openCreate, setOpenCreate] = useState(false);
+  const [openDelete, setOpenDelete] = useState(false);
   
-  // Estado para creación de usuario
   const [newUser, setNewUser] = useState({
     username: '',
     email: '',
@@ -56,7 +81,6 @@ export default function UsersManagementPage() {
     };
     cargarUsuarios();
     
-    // Sincronización entre pestañas
     window.addEventListener('storage', cargarUsuarios);
     return () => window.removeEventListener('storage', cargarUsuarios);
   }, []);
@@ -75,7 +99,6 @@ export default function UsersManagementPage() {
       return;
     }
 
-    // Validar duplicados por username o email
     if (usuarios.some(u => u.username.toLowerCase() === username.toLowerCase().trim())) {
       setMensaje({ open: true, texto: "El nombre de usuario ya existe", color: "error" });
       return;
@@ -111,6 +134,16 @@ export default function UsersManagementPage() {
       actualizarLocalStorage(nuevos);
       setOpenEdit(false);
       setMensaje({ open: true, texto: "Permisos actualizados correctamente", color: "success" });
+    }
+  };
+
+  const handleDeleteUser = () => {
+    if (selectedUser) {
+      const nuevos = usuarios.filter(u => u.id !== selectedUser.id);
+      actualizarLocalStorage(nuevos);
+      setOpenDelete(false);
+      setSelectedUser(null);
+      setMensaje({ open: true, texto: "Usuario eliminado definitivamente", color: "success" });
     }
   };
 
@@ -177,7 +210,7 @@ export default function UsersManagementPage() {
                     <TableCell>
                       <Stack direction="row" spacing={2} alignItems="center">
                         <Avatar sx={{ 
-                          bgcolor: user.rol === 'superadmin' ? '#1e293b' : user.rol === 'ute' ? '#124a70' : '#1d6ea5', 
+                          bgcolor: ROL_STYLES[user.rol].avatar, 
                           fontWeight: 800, fontSize: '0.9rem' 
                         }}>
                           {user.username.charAt(0).toUpperCase()}
@@ -194,8 +227,8 @@ export default function UsersManagementPage() {
                         size="small" 
                         sx={{ 
                           fontWeight: 900, fontSize: '0.65rem',
-                          bgcolor: user.rol === 'superadmin' ? '#fee2e2' : user.rol === 'ute' ? '#dcfce7' : '#e2e8f0', 
-                          color: user.rol === 'superadmin' ? '#991b1b' : user.rol === 'ute' ? '#166534' : '#124a70'
+                          bgcolor: ROL_STYLES[user.rol].bg, 
+                          color: ROL_STYLES[user.rol].color
                         }} 
                       />
                     </TableCell>
@@ -221,6 +254,11 @@ export default function UsersManagementPage() {
                           <Tooltip title={user.estado === 'ACTIVO' ? "Bloquear acceso" : "Activar acceso"}>
                             <IconButton onClick={() => toggleEstado(user.id)} size="small" sx={{ color: user.estado === 'ACTIVO' ? '#ef4444' : '#80bc71' }}>
                               {user.estado === 'ACTIVO' ? <BlockIcon fontSize="small" /> : <CheckCircleIcon fontSize="small" />}
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Eliminar definitivamente">
+                            <IconButton onClick={() => { setSelectedUser({...user}); setOpenDelete(true); }} size="small" sx={{ color: '#64748b', '&:hover': { color: '#ef4444' } }}>
+                              <DeleteForeverIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
                         </Stack>
@@ -251,7 +289,7 @@ export default function UsersManagementPage() {
               />
               <TextField select fullWidth label="Asignar Rol Inicial" value={newUser.rol} onChange={(e) => setNewUser({...newUser, rol: e.target.value as RolOficial})}>
                 <MenuItem value="asesor">Asesor (Ventas)</MenuItem>
-                <MenuItem value="ute">Administrador UTE</MenuItem>
+                <MenuItem value="administrador">Administrador</MenuItem>
                 <MenuItem value="usuario">Usuario Consulta</MenuItem>
               </TextField>
               <Alert severity="info" sx={{ borderRadius: '12px', fontSize: '0.8rem' }}>
@@ -275,13 +313,32 @@ export default function UsersManagementPage() {
             </Box>
             <TextField select fullWidth label="Nuevo Rol de Sistema" value={selectedUser?.rol || ''} onChange={(e) => selectedUser && setSelectedUser({...selectedUser, rol: e.target.value as RolOficial})}>
               <MenuItem value="asesor">Asesor (Ventas)</MenuItem>
-              <MenuItem value="ute">Administrador UTE</MenuItem>
+              <MenuItem value="administrador">Administrador</MenuItem>
               <MenuItem value="usuario">Usuario (Solo Consulta)</MenuItem>
             </TextField>
           </DialogContent>
           <DialogActions sx={{ p: 3, gap: 1 }}>
             <Button onClick={() => setOpenEdit(false)} sx={{ fontWeight: 700, color: '#64748b' }}>Cerrar</Button>
             <Button onClick={handleSaveRol} variant="contained" sx={{ bgcolor: '#124a70', borderRadius: '12px', px: 3, fontWeight: 800 }}>Aplicar Cambios</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* DIÁLOGO: CONFIRMACIÓN DE ELIMINACIÓN */}
+        <Dialog open={openDelete} onClose={() => setOpenDelete(false)} PaperProps={{ sx: { borderRadius: '24px', p: 1 } }}>
+          <DialogTitle sx={{ fontWeight: 900, color: '#ef4444', textAlign: 'center' }}>¿Eliminar Usuario?</DialogTitle>
+          <DialogContent sx={{ textAlign: 'center' }}>
+            <Typography variant="body1">
+              Estás por eliminar la cuenta de <strong>{selectedUser?.username}</strong>. 
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Esta acción es irreversible y el asesor perderá acceso inmediato al sistema.
+            </Typography>
+          </DialogContent>
+          <DialogActions sx={{ p: 3, justifyContent: 'center', gap: 2 }}>
+            <Button onClick={() => setOpenDelete(false)} sx={{ fontWeight: 700, color: '#64748b' }}>Cancelar</Button>
+            <Button onClick={handleDeleteUser} variant="contained" sx={{ bgcolor: '#ef4444', '&:hover': { bgcolor: '#dc2626' }, borderRadius: '12px', px: 3, fontWeight: 800 }}>
+              Sí, Eliminar
+            </Button>
           </DialogActions>
         </Dialog>
 
