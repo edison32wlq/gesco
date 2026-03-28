@@ -59,7 +59,7 @@ export default function LoginPage() {
         return;
       }
 
-      const rolesValidos: RolOficial[] = ["superadmin", "ute", "usuario", "asesor"];
+      const rolesValidos: RolOficial[] = ["superadmin", "administrador", "usuario", "asesor"];
       const rolFinal: RolOficial = rolesValidos.includes(usuarioEncontrado.rol) 
         ? usuarioEncontrado.rol 
         : "usuario";
