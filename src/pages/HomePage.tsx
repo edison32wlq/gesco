@@ -9,26 +9,35 @@ import TimerIcon from '@mui/icons-material/Timer';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 
+/**
+ * Componente HomePage
+ * Presenta la oferta académica de Maestrías en convenio GESCO - UTE.
+ * Incluye secciones de beneficios, inversión, programas y datos bancarios.
+ */
 export default function HomePage() {
+  // Configuración de los programas con sus respectivos brochures PDF actualizados
   const maestrias = [
     {
       titulo: "Maestría en Educación Inclusiva",
       mencion: "Mención Inclusión Educativa y Atención a la Diversidad",
-      url: "https://acortar.link/Z3eNan",
+      // Archivo actualizado: educacion (1) (1)_260323_170700.pdf
+      url: "/docs/educacion (1) (1)_260323_170700.pdf",
       color: "linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)",
       shadow: "rgba(59, 130, 246, 0.2)"
     },
     {
       titulo: "Maestría en Pedagogía e Innovación",
       mencion: "Mención Docencia e Innovación Educativa",
-      url: "https://acortar.link/UC8kE1",
+      // Archivo actualizado: pedagogia (1)-1_260323_170633.pdf
+      url: "/docs/pedagogia (1)-1_260323_170633.pdf",
       color: "linear-gradient(135deg, #059669 0%, #10b981 100%)",
       shadow: "rgba(16, 185, 129, 0.2)"
     },
     {
       titulo: "Maestría en Administración Educativa",
       mencion: "Gestión y Dirección de Instituciones",
-      url: "https://acortar.link/md9lTz",
+      // Archivo actualizado: administracion-educativa (1) (1)_260323_170807.pdf
+      url: "/docs/administracion-educativa (1) (1)_260323_170807.pdf",
       color: "linear-gradient(135deg, #b45309 0%, #f59e0b 100%)",
       shadow: "rgba(245, 158, 11, 0.2)"
     }
@@ -37,7 +46,9 @@ export default function HomePage() {
   return (
     <Box sx={{ bgcolor: '#ffffff', minHeight: '100vh', pb: 10, color: '#1e293b', fontFamily: "'Inter', sans-serif" }}>
       
-      {/* --- HERO SECTION --- */}
+      {/* --- HERO SECTION --- 
+          Sección de bienvenida con gradientes radiales y branding del convenio.
+      */}
       <Box sx={{ 
         pt: { xs: 8, md: 12 }, pb: { xs: 10, md: 14 },
         background: 'radial-gradient(circle at 50% -20%, #eff6ff 0%, #ffffff 80%)',
@@ -74,7 +85,9 @@ export default function HomePage() {
         </Container>
       </Box>
 
-      {/* --- REQUISITOS E INVERSIÓN (Corregido el corte de texto) --- */}
+      {/* --- REQUISITOS E INVERSIÓN --- 
+          Detalles sobre beneficios académicos y costos con beca aplicada.
+      */}
       <Container maxWidth="lg" sx={{ mt: -5 }}>
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 4 }}>
           <Paper elevation={0} sx={{ 
@@ -110,7 +123,9 @@ export default function HomePage() {
         </Box>
       </Container>
 
-      {/* --- MAESTRÍAS (Corregido: Alineación y Diseño de Cuadros) --- */}
+      {/* --- MAESTRÍAS DISPONIBLES --- 
+          Grid de tarjetas interactivas que enlazan a los nuevos brochures PDF.
+      */}
       <Container maxWidth="lg" sx={{ mt: 12 }}>
         <Typography variant="h3" align="center" sx={{ fontWeight: 950, mb: 8, color: '#0f172a', letterSpacing: -1 }}>Programas Disponibles</Typography>
         <Box sx={{ 
@@ -122,27 +137,31 @@ export default function HomePage() {
               transition: '0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
               '&:hover': { transform: 'translateY(-12px)', boxShadow: `0 30px 60px -12px ${m.shadow}` }
             }}>
-              {/* Header con degradado - Altura dinámica */}
+              {/* Header con degradado dinámico según el programa */}
               <Box sx={{ p: 4, background: m.color, color: 'white' }}>
                 <Typography variant="h6" sx={{ fontWeight: 900, lineHeight: 1.2, fontSize: '1.25rem' }}>
                   {m.titulo}
                 </Typography>
               </Box>
               
-              {/* Cuerpo con padding uniforme */}
+              {/* Información del programa y botón de descarga/visualización */}
               <Box sx={{ p: 4, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
                 <Typography variant="body2" sx={{ color: '#64748b', mb: 4, minHeight: '3rem', fontWeight: 500, lineHeight: 1.4 }}>
                   {m.mencion}
                 </Typography>
                 <Button 
-                  fullWidth variant="contained" endIcon={<ArrowForwardIosIcon sx={{ fontSize: '10px !important' }} />} 
-                  href={m.url} target="_blank"
+                  fullWidth 
+                  variant="contained" 
+                  endIcon={<ArrowForwardIosIcon sx={{ fontSize: '10px !important' }} />} 
+                  href={m.url} 
+                  target="_blank"
+                  rel="noopener noreferrer"
                   sx={{ 
                     borderRadius: 4, py: 1.8, fontWeight: 900, textTransform: 'none', 
                     background: m.color, boxShadow: 'none', mt: 'auto'
                   }}
                 >
-                  Ver Brochure
+                  Ver Brochure PDF
                 </Button>
               </Box>
             </Card>
@@ -150,7 +169,9 @@ export default function HomePage() {
         </Box>
       </Container>
 
-      {/* --- SECCIÓN BANCARIA --- */}
+      {/* --- SECCIÓN BANCARIA --- 
+          Información para la reserva de cupo mediante depósito o transferencia.
+      */}
       <Container maxWidth="md" sx={{ mt: 15 }}>
         <Paper elevation={0} sx={{ 
           p: { xs: 4, md: 6 }, borderRadius: 9, bgcolor: '#f8fafc', border: '1px solid #e2e8f0',
@@ -177,6 +198,9 @@ export default function HomePage() {
           </Box>
         </Paper>
       </Container>
+      
+      {/* Espacio adicional al final de la página */}
+      <Box sx={{ height: 40 }} />
     </Box>
   );
 }

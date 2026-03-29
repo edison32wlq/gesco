@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { 
   Paper, Typography, Box, Stack, Table, 
   TableBody, TableCell, TableHead, TableRow, 
-  TableContainer, Chip, Avatar, Fade, TextField, Button, Divider
+  TableContainer, Chip, Fade, TextField, Button
 } from "@mui/material";
 import { useAuth } from "../context/AuthContext";
 
