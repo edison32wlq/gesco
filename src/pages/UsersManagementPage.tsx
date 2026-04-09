@@ -7,7 +7,26 @@ import {
   Alert, Snackbar, InputAdornment
 } from "@mui/material";
 
-// ICONOS
+// 1. FIREBASE CORE & AUTH (Para la instancia temporal)
+import { initializeApp, deleteApp } from "firebase/app";
+import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
+
+// 2. FIRESTORE (Sin duplicados y con setDoc)
+import { 
+  collection, 
+  onSnapshot, 
+  doc, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc, 
+  query, 
+  orderBy 
+} from "firebase/firestore";
+
+// 3. TU CONFIGURACIÓN (Asegúrate que firebaseConfig esté exportado en su archivo)
+import { db, firebaseConfig } from "../firebaseConfig";
+
+// 4. ICONOS
 import BlockIcon from '@mui/icons-material/Block';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import EditIcon from '@mui/icons-material/Edit';
@@ -15,12 +34,11 @@ import ShieldIcon from '@mui/icons-material/Shield';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import KeyIcon from '@mui/icons-material/Key';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
-
 // 1. DEFINICIÓN DE TIPOS
 type RolOficial = 'superadmin' | 'administrador' | 'usuario' | 'asesor';
 
 interface Usuario {
-  id: string | number;
+  id: string; // Firebase usa IDs tipo string
   username: string;
   email: string;
   password?: string;
@@ -31,26 +49,10 @@ interface Usuario {
 
 // 2. CONFIGURACIÓN DE ESTILOS POR ROL
 const ROL_STYLES: Record<RolOficial, { bg: string; color: string; avatar: string }> = {
-  superadmin: {
-    bg: '#fee2e2',
-    color: '#991b1b',
-    avatar: '#1e293b'
-  },
-  administrador: {
-    bg: '#dcfce7',
-    color: '#166534',
-    avatar: '#124a70'
-  },
-  asesor: {
-    bg: '#fef3c7',
-    color: '#92400e',
-    avatar: '#b45309'
-  },
-  usuario: {
-    bg: '#e0f2fe',
-    color: '#075985',
-    avatar: '#1d6ea5'
-  }
+  superadmin: { bg: '#fee2e2', color: '#991b1b', avatar: '#1e293b' },
+  administrador: { bg: '#dcfce7', color: '#166534', avatar: '#124a70' },
+  asesor: { bg: '#fef3c7', color: '#92400e', avatar: '#b45309' },
+  usuario: { bg: '#e0f2fe', color: '#075985', avatar: '#1d6ea5' }
 };
 
 export default function UsersManagementPage() {
@@ -73,77 +75,97 @@ export default function UsersManagementPage() {
     color: "success" as "success" | "error" 
   });
 
-  // --- PERSISTENCIA Y CARGA ---
+  // --- CARGA EN TIEMPO REAL DESDE FIREBASE ---
   useEffect(() => {
-    const cargarUsuarios = () => {
-      const savedUsers = JSON.parse(localStorage.getItem("usuarios_sistema") || "[]");
-      setUsuarios(savedUsers);
-    };
-    cargarUsuarios();
+    const q = query(collection(db, "usuarios"), orderBy("username", "asc"));
     
-    window.addEventListener('storage', cargarUsuarios);
-    return () => window.removeEventListener('storage', cargarUsuarios);
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(documento => ({
+        id: documento.id,
+        ...documento.data()
+      })) as Usuario[];
+      setUsuarios(docs);
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  const actualizarLocalStorage = (listaActualizada: Usuario[]) => {
-    setUsuarios(listaActualizada);
-    localStorage.setItem("usuarios_sistema", JSON.stringify(listaActualizada));
-  };
+  // --- LÓGICA DE USUARIOS CON FIREBASE ---
+  const handleCreateUser = async () => {
+  const { username, email, password, rol } = newUser;
 
-  // --- LÓGICA DE USUARIOS ---
-  const handleCreateUser = () => {
-    const { username, email, password, rol } = newUser;
+  if (!username.trim() || !email.trim() || !password) {
+    setMensaje({ open: true, texto: "Todos los campos son obligatorios", color: "error" });
+    return;
+  }
 
-    if (!username.trim() || !email.trim() || !password) {
-      setMensaje({ open: true, texto: "Todos los campos son obligatorios", color: "error" });
-      return;
-    }
+  try {
+    // A. Creamos el acceso (Authentication) de forma aislada
+    const tempApp = initializeApp(firebaseConfig, "TempApp");
+    const tempAuth = getAuth(tempApp);
+    const userCredential = await createUserWithEmailAndPassword(tempAuth, email, password);
+    const userAuth = userCredential.user;
 
-    if (usuarios.some(u => u.username.toLowerCase() === username.toLowerCase().trim())) {
-      setMensaje({ open: true, texto: "El nombre de usuario ya existe", color: "error" });
-      return;
-    }
-
-    const nuevoUsuario: Usuario = {
-      id: Date.now(),
+    // B. Guardamos los datos en la base de datos (Firestore) 
+    // Usamos el UID generado para que coincidan
+    await setDoc(doc(db, "usuarios", userAuth.uid), {
       username: username.trim(),
       email: email.toLowerCase().trim(),
-      password: password,
       rol: rol,
       estado: 'ACTIVO',
       fechaAlta: new Date().toLocaleDateString()
-    };
+    });
 
-    actualizarLocalStorage([...usuarios, nuevoUsuario]);
+    // C. Limpiamos la instancia temporal
+    await signOut(tempAuth);
+    await deleteApp(tempApp);
+
     setOpenCreate(false);
     setNewUser({ username: '', email: '', password: '', rol: 'asesor' });
-    setMensaje({ open: true, texto: `Usuario ${nuevoUsuario.username} creado con éxito`, color: "success" });
-  };
+    setMensaje({ open: true, texto: `Cuenta de ${username} creada con éxito`, color: "success" });
 
-  const toggleEstado = (id: string | number) => {
-    const nuevos = usuarios.map(u => 
-      u.id === id ? { ...u, estado: u.estado === 'ACTIVO' ? 'BLOQUEADO' : 'ACTIVO' } as Usuario : u
-    );
-    actualizarLocalStorage(nuevos);
-    setMensaje({ open: true, texto: "Estado de acceso modificado", color: "success" });
-  };
+  } catch (error: any) {
+    let msg = "Error al crear el usuario";
+    if (error.code === 'auth/email-already-in-use') msg = "Ese correo ya está registrado";
+    setMensaje({ open: true, texto: msg, color: "error" });
+  }
+};
 
-  const handleSaveRol = () => {
-    if (selectedUser) {
-      const nuevos = usuarios.map(u => u.id === selectedUser.id ? selectedUser : u);
-      actualizarLocalStorage(nuevos);
-      setOpenEdit(false);
-      setMensaje({ open: true, texto: "Permisos actualizados correctamente", color: "success" });
+  const toggleEstado = async (id: string, estadoActual: string) => {
+    try {
+      const docRef = doc(db, "usuarios", id);
+      await updateDoc(docRef, { 
+        estado: estadoActual === 'ACTIVO' ? 'BLOQUEADO' : 'ACTIVO' 
+      });
+      setMensaje({ open: true, texto: "Estado de acceso modificado", color: "success" });
+    } catch (error) {
+      setMensaje({ open: true, texto: "Error al actualizar estado", color: "error" });
     }
   };
 
-  const handleDeleteUser = () => {
+  const handleSaveRol = async () => {
     if (selectedUser) {
-      const nuevos = usuarios.filter(u => u.id !== selectedUser.id);
-      actualizarLocalStorage(nuevos);
-      setOpenDelete(false);
-      setSelectedUser(null);
-      setMensaje({ open: true, texto: "Usuario eliminado definitivamente", color: "success" });
+      try {
+        const docRef = doc(db, "usuarios", selectedUser.id);
+        await updateDoc(docRef, { rol: selectedUser.rol });
+        setOpenEdit(false);
+        setMensaje({ open: true, texto: "Permisos actualizados correctamente", color: "success" });
+      } catch (error) {
+        setMensaje({ open: true, texto: "Error al actualizar permisos", color: "error" });
+      }
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (selectedUser) {
+      try {
+        await deleteDoc(doc(db, "usuarios", selectedUser.id));
+        setOpenDelete(false);
+        setSelectedUser(null);
+        setMensaje({ open: true, texto: "Usuario eliminado definitivamente", color: "success" });
+      } catch (error) {
+        setMensaje({ open: true, texto: "Error al eliminar usuario", color: "error" });
+      }
     }
   };
 
@@ -252,7 +274,7 @@ export default function UsersManagementPage() {
                             </IconButton>
                           </Tooltip>
                           <Tooltip title={user.estado === 'ACTIVO' ? "Bloquear acceso" : "Activar acceso"}>
-                            <IconButton onClick={() => toggleEstado(user.id)} size="small" sx={{ color: user.estado === 'ACTIVO' ? '#ef4444' : '#80bc71' }}>
+                            <IconButton onClick={() => toggleEstado(user.id, user.estado)} size="small" sx={{ color: user.estado === 'ACTIVO' ? '#ef4444' : '#80bc71' }}>
                               {user.estado === 'ACTIVO' ? <BlockIcon fontSize="small" /> : <CheckCircleIcon fontSize="small" />}
                             </IconButton>
                           </Tooltip>

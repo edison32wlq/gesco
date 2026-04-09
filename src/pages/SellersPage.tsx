@@ -3,13 +3,17 @@ import {
   Paper, TextField, Typography, Stack, Table, 
   TableBody, TableCell, TableHead, TableRow, 
   Box, TableContainer, Chip, Avatar, Fade,
-  MenuItem, Button, Divider
+  MenuItem, Button, Divider, CircularProgress
 } from "@mui/material";
 
 // LIBRERÍAS (npm install xlsx jspdf jspdf-autotable)
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+
+// FIREBASE IMPORTS
+import { db } from "../firebaseConfig";
+import { collection, getDocs, query, where } from "firebase/firestore";
 
 // ICONOS
 import LeaderboardIcon from '@mui/icons-material/Leaderboard';
@@ -25,12 +29,12 @@ export default function SellersPage() {
   // --- ESTADOS DE DATOS ---
   const [vendedores, setVendedores] = useState<any[]>([]);
   const [registros, setRegistros] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // --- ESTADOS DE FILTRO POR RANGO ---
   const [busqueda, setBusqueda] = useState("");
   const [orden, setOrden] = useState("ventas"); 
   
-  // Inicializamos con el primer y último día del mes actual para que no aparezca vacío
   const hoy = new Date();
   const primerDiaMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0];
   const ultimoDiaMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).toISOString().split('T')[0];
@@ -38,14 +42,39 @@ export default function SellersPage() {
   const [fechaInicio, setFechaInicio] = useState(primerDiaMes);
   const [fechaFin, setFechaFin] = useState(ultimoDiaMes);
 
-  // --- CARGA DE DATOS ---
-  const cargarDatos = () => {
-    const usuariosSistema = JSON.parse(localStorage.getItem("usuarios_sistema") || "[]");
-    const soloAsesores = usuariosSistema.filter((u: any) => u.rol === "asesor");
-    const r_guardados = JSON.parse(localStorage.getItem("registros") || "[]");
-    
-    setVendedores(soloAsesores);
-    setRegistros(r_guardados);
+  // --- CARGA DE DATOS DESDE FIREBASE ---
+  const cargarDatos = async () => {
+    setLoading(true);
+    try {
+      // 1. Cargar Vendedores (Asesores) desde la colección "usuarios"
+      const qVendedores = query(collection(db, "usuarios"), where("rol", "==", "asesor"));
+      const snapVendedores = await getDocs(qVendedores);
+      const listaVendedores = snapVendedores.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      // 2. Cargar Registros desde la colección "registros"
+      const snapRegistros = await getDocs(collection(db, "registros"));
+      const listaRegistros = snapRegistros.docs.map(doc => {
+        const data = doc.data();
+        // Intentamos obtener la fecha de filtro. Si es un Timestamp de Firebase, lo convertimos a string YYYY-MM-DD
+        let fechaFiltroStr = data.fechaFiltro || "";
+        if (data.fechaCreacion && data.fechaCreacion.toDate) {
+            fechaFiltroStr = data.fechaCreacion.toDate().toISOString().split('T')[0];
+        }
+
+        return { 
+          id: doc.id, 
+          ...data,
+          fechaFiltro: fechaFiltroStr 
+        };
+      });
+
+      setVendedores(listaVendedores);
+      setRegistros(listaRegistros);
+    } catch (error) {
+      console.error("Error cargando datos de Firebase:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { 
@@ -55,7 +84,6 @@ export default function SellersPage() {
   // --- MOTOR DE FILTRADO POR RANGO ---
   const registroCumpleRango = (reg: any) => {
     if (!reg.fechaFiltro) return false;
-    // Comparación directa de strings YYYY-MM-DD
     return reg.fechaFiltro >= fechaInicio && reg.fechaFiltro <= fechaFin;
   };
 
@@ -67,16 +95,16 @@ export default function SellersPage() {
 
   const vendedoresFiltrados = useMemo(() => {
     let resultado = vendedores.filter(v => 
-      v.username.toLowerCase().includes(busqueda.toLowerCase())
+      (v.username || "").toLowerCase().includes(busqueda.toLowerCase())
     );
 
     return resultado.sort((a, b) => {
       if (orden === "ventas") return obtenerVentas(b.username) - obtenerVentas(a.username);
-      return a.username.localeCompare(b.username);
+      return (a.username || "").localeCompare(b.username || "");
     });
   }, [vendedores, busqueda, orden, registros, fechaInicio, fechaFin]);
 
-  // --- EXPORTACIÓN EXCEL (RESPETANDO FILTROS) ---
+  // --- EXPORTACIÓN EXCEL ---
   const exportarExcelBase = () => {
     const dataFiltrada = registros.filter(reg => registroCumpleRango(reg));
     
@@ -89,7 +117,7 @@ export default function SellersPage() {
       Email: reg.Email || reg.correo || "",
       Phone: reg.Phone || reg.telefonoConvencional || "",
       MobilePhone: reg.MobilePhone || reg.telefono || "",
-      LeadSource: "Activaciones",
+      LeadSource: reg.LeadSource || "Activaciones",
       Tipo_origen__c: "GESCO",
       Status: "Seguimiento", 
       Habeas_data__c: true,
@@ -104,7 +132,7 @@ export default function SellersPage() {
     XLSX.writeFile(wb, `Base_GESCO_${fechaInicio}_al_${fechaFin}.xlsx`);
   };
 
-  // --- EXPORTACIÓN PDF (RESPETANDO FILTROS) ---
+  // --- EXPORTACIÓN PDF ---
   const exportarPDF = () => {
     const doc = new jsPDF();
     doc.setFontSize(16);
@@ -167,6 +195,7 @@ export default function SellersPage() {
               startIcon={<DownloadIcon />} 
               onClick={exportarExcelBase}
               sx={{ borderRadius: '15px', bgcolor: '#124a70', px: 3 }}
+              disabled={loading}
             >
               Excel (Base)
             </Button>
@@ -175,6 +204,7 @@ export default function SellersPage() {
               startIcon={<DownloadIcon />} 
               onClick={exportarPDF}
               sx={{ borderRadius: '15px', color: '#124a70', borderColor: '#124a70', px: 3 }}
+              disabled={loading}
             >
               PDF (Reporte)
             </Button>
@@ -280,7 +310,12 @@ export default function SellersPage() {
         </Box>
 
         {/* TABLA */}
-        <TableContainer component={Paper} sx={{ borderRadius: "30px", border: "1px solid #e2e8f0", overflow: 'hidden' }}>
+        <TableContainer component={Paper} sx={{ borderRadius: "30px", border: "1px solid #e2e8f0", overflow: 'hidden', position: 'relative' }}>
+          {loading && (
+            <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, bgcolor: 'rgba(255,255,255,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1 }}>
+               <CircularProgress color="primary" />
+            </Box>
+          )}
           <Table>
             <TableHead sx={{ bgcolor: "#f8fafc" }}>
               <TableRow>
@@ -300,7 +335,7 @@ export default function SellersPage() {
                     <TableCell>
                       <Stack direction="row" spacing={2} alignItems="center">
                         <Avatar sx={{ bgcolor: '#1d6ea5', fontWeight: 800 }}>
-                          {v.username.charAt(0).toUpperCase()}
+                          {(v.username || "A").charAt(0).toUpperCase()}
                         </Avatar>
                         <Box>
                           <Typography sx={{ fontWeight: 800 }}>{v.username}</Typography>

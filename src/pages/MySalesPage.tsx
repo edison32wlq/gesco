@@ -6,6 +6,10 @@ import {
 } from "@mui/material";
 import { useAuth } from "../context/AuthContext";
 
+// FIREBASE IMPORTS
+import { db } from "../firebaseConfig";
+import { collection, query, where, getDocs } from "firebase/firestore";
+
 // LIBRERÍAS DE EXPORTACIÓN
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -31,11 +35,31 @@ export default function MySalesPage() {
   const [fechaInicio, setFechaInicio] = useState(primerDiaMes);
   const [fechaFin, setFechaFin] = useState(ultimoDiaMes);
 
-  // --- CARGA DE DATOS ---
+  // --- CARGA DE DATOS DESDE FIREBASE ---
   useEffect(() => {
-    const r_guardados = JSON.parse(localStorage.getItem("registros") || "[]");
-    const filtradosPorUsuario = r_guardados.filter((reg: any) => reg.vendedor === user?.username);
-    setTodosMisRegistros(filtradosPorUsuario);
+    const fetchRegistros = async () => {
+      if (!user?.username) return;
+      
+      try {
+        // Consultamos la colección "registros" filtrando por el campo "vendedor"
+        const q = query(
+          collection(db, "registros"), 
+          where("vendedor", "==", user.username)
+        );
+        
+        const querySnapshot = await getDocs(q);
+        const registrosFirebase = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        
+        setTodosMisRegistros(registrosFirebase);
+      } catch (error) {
+        console.error("Error al obtener registros de Firebase:", error);
+      }
+    };
+
+    fetchRegistros();
   }, [user]);
 
   // --- LÓGICA DE FILTRADO DINÁMICO ---
@@ -150,7 +174,6 @@ export default function MySalesPage() {
         <Paper elevation={0} sx={{ p: 2.5, borderRadius: '20px', mb: 4, border: '1px solid #e2e8f0', bgcolor: '#f8fafc' }}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} alignItems="center">
             <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', gap: 1 }}>
-              {/* AQUÍ SE CORRIGIÓ: fontSize en lugar de size */}
               <CalendarMonthIcon fontSize="small" /> FILTRAR PERIODO:
             </Typography>
             

@@ -23,6 +23,17 @@ import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import DateRangeIcon from '@mui/icons-material/DateRange';
 
+// FIREBASE CONFIG (Asegúrate de exportar 'db' desde tu archivo de configuración)
+import { db } from "../firebaseConfig"; 
+import { 
+  collection, 
+  onSnapshot, 
+  doc, 
+  updateDoc, 
+  deleteDoc, 
+  query 
+} from "firebase/firestore";
+
 export default function MultiplyPage() {
   const [registros, setRegistros] = useState<any[]>([]);
   const [vendedores, setVendedores] = useState<string[]>([]);
@@ -42,9 +53,23 @@ export default function MultiplyPage() {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const openMenu = Boolean(anchorEl);
 
+  // ESCUCHA EN TIEMPO REAL DESDE FIREBASE
   useEffect(() => {
-    setRegistros(JSON.parse(localStorage.getItem("registros") || "[]"));
-    setVendedores(JSON.parse(localStorage.getItem("vendedores") || "[]"));
+    const q = query(collection(db, "registros"));
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(documento => ({
+        id: documento.id,
+        ...documento.data()
+      }));
+      setRegistros(docs);
+
+      // Obtener vendedores únicos para el Autocomplete
+      const listaAsesores = Array.from(new Set(docs.map((r: any) => r.vendedor))).filter(Boolean);
+      setVendedores(listaAsesores as string[]);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const handleChangePage = (_event: unknown, newPage: number) => { setPage(newPage); };
@@ -53,11 +78,13 @@ export default function MultiplyPage() {
     setPage(0);
   };
 
-  const eliminarRegistro = (id: number) => {
+  const eliminarRegistro = async (id: string) => {
     if(window.confirm("¿Está seguro de eliminar este registro?")) {
-      const nuevos = registros.filter(r => r.id !== id);
-      setRegistros(nuevos);
-      localStorage.setItem("registros", JSON.stringify(nuevos));
+      try {
+        await deleteDoc(doc(db, "registros", id));
+      } catch (error) {
+        console.error("Error al eliminar:", error);
+      }
     }
   };
 
@@ -66,11 +93,20 @@ export default function MultiplyPage() {
     setOpenEdit(true);
   };
 
-  const handleSaveEdit = () => {
-    const nuevosRegistros = registros.map(r => r.id === selectedReg.id ? selectedReg : r);
-    setRegistros(nuevosRegistros);
-    localStorage.setItem("registros", JSON.stringify(nuevosRegistros));
-    setOpenEdit(false);
+  const handleSaveEdit = async () => {
+    if (!selectedReg) return;
+    try {
+      const docRef = doc(db, "registros", selectedReg.id);
+      await updateDoc(docRef, {
+        nombre: selectedReg.nombre,
+        apellido: selectedReg.apellido,
+        experienciaDocente: selectedReg.experienciaDocente,
+        estado: selectedReg.estado
+      });
+      setOpenEdit(false);
+    } catch (error) {
+      console.error("Error al actualizar:", error);
+    }
   };
 
   // LÓGICA DE FILTRADO
@@ -89,7 +125,7 @@ export default function MultiplyPage() {
   const handleDownloadClick = (event: React.MouseEvent<HTMLButtonElement>) => { setAnchorEl(event.currentTarget); };
   const handleCloseMenu = () => { setAnchorEl(null); };
 
-  // --- ACTUALIZACIÓN: EXPORTACIÓN CON FORMATO TÉCNICO DE CARGA ---
+  // EXPORTACIÓN EXCEL
   const exportToExcel = () => {
     const dataToExport = registrosFiltrados.map(r => ({
       FirstName: r.nombre || "", 
@@ -111,7 +147,6 @@ export default function MultiplyPage() {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Leads");
     
-    // Ajustar anchos de columna para que se vea profesional
     const wscols = [
       {wch: 15}, {wch: 15}, {wch: 40}, {wch: 20}, {wch: 20}, 
       {wch: 30}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}, 
@@ -123,29 +158,22 @@ export default function MultiplyPage() {
     handleCloseMenu();
   };
 
+  // EXPORTACIÓN PDF
   const exportToPDF = () => {
-    const doc = new jsPDF('l', 'mm', 'a4'); 
-    
-    doc.setFontSize(18);
-    doc.setTextColor(18, 74, 112);
-    doc.text("GESCO - Reporte de Seguimiento Detallado", 14, 15);
-    
-    doc.setFontSize(10);
-    doc.setTextColor(100, 100, 100);
-    doc.text(`Fecha de reporte: ${new Date().toLocaleString()}`, 14, 22);
+    const docPdf = new jsPDF('l', 'mm', 'a4'); 
+    docPdf.setFontSize(18);
+    docPdf.setTextColor(18, 74, 112);
+    docPdf.text("GESCO - Reporte de Seguimiento Detallado", 14, 15);
+    docPdf.setFontSize(10);
+    docPdf.setTextColor(100, 100, 100);
+    docPdf.text(`Fecha de reporte: ${new Date().toLocaleString()}`, 14, 22);
 
     const tableColumn = ["Nombre Completo", "Cédula", "Correo", "Asesor", "Exp. Docente", "Fecha", "Estado"];
     const tableRows = registrosFiltrados.map(r => [
-        `${r.nombre} ${r.apellido}`, 
-        r.cedula, 
-        r.correo,
-        r.vendedor, 
-        r.experienciaDocente || "N/A",
-        r.fechaFiltro || "N/A",
-        r.estado?.toUpperCase() || "INGRESADO"
+        `${r.nombre} ${r.apellido}`, r.cedula, r.correo, r.vendedor, r.experienciaDocente || "N/A", r.fechaFiltro || "N/A", r.estado?.toUpperCase() || "INGRESADO"
     ]);
 
-    autoTable(doc, {
+    autoTable(docPdf, {
       head: [tableColumn],
       body: tableRows,
       startY: 30,
@@ -154,23 +182,49 @@ export default function MultiplyPage() {
       styles: { fontSize: 8, cellPadding: 3 },
       alternateRowStyles: { fillColor: [245, 247, 250] },
       didDrawPage: (_data) => {
-        const pageCount = (doc as any).internal.getNumberOfPages();
-        doc.setFontSize(8);
-        doc.setTextColor(150, 150, 150);
-        doc.text("GESCO UTE - Este documento contiene información confidencial de carácter institucional.", 14, 200);
+        const pageCount = (docPdf as any).internal.getNumberOfPages();
+        docPdf.setFontSize(8);
+        docPdf.setTextColor(150, 150, 150);
+        docPdf.text("GESCO UTE - Este documento contiene información confidencial de carácter institucional.", 14, 200);
         const str = `Página ${pageCount}`;
-        doc.text(str, 283, 200, { align: "right" });
+        docPdf.text(str, 283, 200, { align: "right" });
       }
     });
 
-    doc.save(`Reporte_GESCO_${new Date().toLocaleDateString()}.pdf`);
+    docPdf.save(`Reporte_GESCO_${new Date().toLocaleDateString()}.pdf`);
     handleCloseMenu();
   };
 
   const verComprobante = (base64: string) => {
-    const win = window.open();
-    win?.document.write(`<iframe src="${base64}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
-  };
+  if (!base64) {
+    alert("No hay comprobante disponible.");
+    return;
+  }
+
+  const win = window.open();
+  if (!win) {
+    alert("Por favor, permite las ventanas emergentes para ver el comprobante.");
+    return;
+  }
+
+  // Si es un PDF
+  if (base64.includes("data:application/pdf")) {
+    win.document.write(
+      `<iframe src="${base64}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`
+    );
+  } 
+  // Si es una imagen
+  else {
+    win.document.write(
+      `<html>
+        <body style="margin:0; display:flex; align-items:center; justify-content:center; background:#222;">
+          <img src="${base64}" style="max-width:100%; max-height:100%; box-shadow: 0 0 20px rgba(0,0,0,0.5);" />
+        </body>
+      </html>`
+    );
+  }
+  win.document.close();
+};
 
   return (
     <Fade in={true} timeout={800}>
@@ -244,10 +298,7 @@ export default function MultiplyPage() {
                 fullWidth
                 options={vendedores}
                 value={filtroVendedor}
-                onChange={(_event, newValue) => {
-                  setFiltroVendedor(newValue);
-                  setPage(0);
-                }}
+                onChange={(_event, newValue) => { setFiltroVendedor(newValue); setPage(0); }}
                 renderInput={(params) => (
                   <TextField 
                     {...params} 
@@ -261,19 +312,13 @@ export default function MultiplyPage() {
             </Paper>
           </Stack>
 
-          {/* RANGO DE FECHAS */}
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
             <Paper sx={{ p: 1.5, px: 3, borderRadius: "20px", display: 'flex', alignItems: 'center', flex: 1, border: "1px solid rgba(0,0,0,0.05)" }}>
               <DateRangeIcon sx={{ color: "#124a70", mr: 2 }} />
               <TextField 
-                type="date" 
-                variant="standard" 
-                label="Desde" 
-                value={fechaDesde} 
+                type="date" variant="standard" label="Desde" value={fechaDesde} 
                 onChange={(e) => { setFechaDesde(e.target.value); setPage(0); }} 
-                fullWidth 
-                InputLabelProps={{ shrink: true }} 
-                InputProps={{ disableUnderline: true }} 
+                fullWidth InputLabelProps={{ shrink: true }} InputProps={{ disableUnderline: true }} 
                 sx={{ "& .MuiInputLabel-root": { fontWeight: 700, color: "#124a70" } }} 
               />
             </Paper>
@@ -281,22 +326,16 @@ export default function MultiplyPage() {
             <Paper sx={{ p: 1.5, px: 3, borderRadius: "20px", display: 'flex', alignItems: 'center', flex: 1, border: "1px solid rgba(0,0,0,0.05)" }}>
               <DateRangeIcon sx={{ color: "#124a70", mr: 2 }} />
               <TextField 
-                type="date" 
-                variant="standard" 
-                label="Hasta" 
-                value={fechaHasta} 
+                type="date" variant="standard" label="Hasta" value={fechaHasta} 
                 inputProps={{ min: fechaDesde }} 
                 onChange={(e) => {
                     if (fechaDesde && e.target.value < fechaDesde) {
                         alert("La fecha final no puede ser anterior a la inicial.");
                         return;
                     }
-                    setFechaHasta(e.target.value); 
-                    setPage(0); 
+                    setFechaHasta(e.target.value); setPage(0); 
                 }} 
-                fullWidth 
-                InputLabelProps={{ shrink: true }} 
-                InputProps={{ disableUnderline: true }} 
+                fullWidth InputLabelProps={{ shrink: true }} InputProps={{ disableUnderline: true }} 
                 sx={{ "& .MuiInputLabel-root": { fontWeight: 700, color: "#124a70" } }} 
               />
             </Paper>
@@ -316,7 +355,6 @@ export default function MultiplyPage() {
           </Stack>
         </Stack>
 
-        {/* TABLA */}
         <TableContainer component={Paper} sx={{ borderRadius: "28px", boxShadow: "0 20px 50px rgba(0,0,0,0.08)", border: "1px solid rgba(0,0,0,0.05)" }}>
           <Table>
             <TableHead sx={{ bgcolor: "#f8fafc" }}>
@@ -343,8 +381,7 @@ export default function MultiplyPage() {
                   <TableCell><Chip label={row.vendedor} sx={{ fontWeight: 700, bgcolor: "#f1f5f9", color: "#124a70" }} /></TableCell>
                   <TableCell>
                     <Chip 
-                        label={row.experienciaDocente || "N/A"} 
-                        variant="outlined"
+                        label={row.experienciaDocente || "N/A"} variant="outlined"
                         sx={{ fontWeight: 700, color: row.experienciaDocente === "Si" ? "#80bc71" : "#64748b", borderColor: row.experienciaDocente === "Si" ? "#80bc71" : "#e2e8f0" }} 
                     />
                   </TableCell>
@@ -353,14 +390,7 @@ export default function MultiplyPage() {
                   </TableCell>
                   <TableCell align="right" sx={{ pr: 3 }}>
                     <Stack direction="row" spacing={1} justifyContent="flex-end">
-                      <Tooltip title="Ver Comprobante">
-                        <IconButton 
-                            onClick={() => verComprobante(row.comprobante)}
-                            sx={{ color: "#80bc71", bgcolor: "#f0f9ed", "&:hover": { bgcolor: "#80bc71", color: "white" } }}
-                        >
-                            <VisibilityIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
+                      <Tooltip title="Ver Comprobante"><IconButton onClick={() => verComprobante(row.comprobanteBase64 || row.comprobante)} sx={{ color: "#80bc71", bgcolor: "#f0f9ed", "&:hover": { bgcolor: "#80bc71", color: "white" } }}><VisibilityIcon fontSize="small" /></IconButton></Tooltip>
                       <Tooltip title="Editar"><IconButton onClick={() => handleOpenEdit(row)} sx={{ color: "#124a70", bgcolor: "#f1f5f9", "&:hover": { bgcolor: "#124a70", color: "white" } }}><EditIcon fontSize="small" /></IconButton></Tooltip>
                       <Tooltip title="Eliminar"><IconButton onClick={() => eliminarRegistro(row.id)} sx={{ color: "#ef4444", bgcolor: "#fef2f2", "&:hover": { bgcolor: "#ef4444", color: "white" } }}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
                     </Stack>
@@ -372,7 +402,6 @@ export default function MultiplyPage() {
           <TablePagination rowsPerPageOptions={[5, 10, 25]} component="div" count={registrosFiltrados.length} rowsPerPage={rowsPerPage} page={page} onPageChange={handleChangePage} onRowsPerPageChange={handleChangeRowsPerPage} labelRowsPerPage="Filas:" sx={{ bgcolor: "#f8fafc", fontWeight: 700 }} />
         </TableContainer>
 
-        {/* DIALOG DE EDICIÓN */}
         <Dialog open={openEdit} onClose={() => setOpenEdit(false)} fullWidth maxWidth="xs" PaperProps={{ sx: { borderRadius: '28px', p: 2 } }}>
           <DialogTitle sx={{ fontWeight: 900, fontSize: "1.5rem", color: "#124a70" }}>Editar Cliente</DialogTitle>
           <DialogContent>

@@ -2,11 +2,17 @@ import { useState, useEffect } from "react";
 import { 
   Paper, TextField, Typography, Button, Box, Stack, 
   MenuItem, Alert, Dialog, DialogContent, DialogActions,
-  Divider
+  Divider, CircularProgress
 } from "@mui/material";
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import VerifiedIcon from '@mui/icons-material/Verified'; 
+
+// FIREBASE IMPORTS (Solo usamos Firestore)
+import { db } from "../firebaseConfig";
+import { collection, addDoc, getDocs, query, where, serverTimestamp } from "firebase/firestore";
+
+// ASSETS
 import logoUte from "../assets/logo-ute-wp.png";
 import gescoLogo from "../assets/gesco-logo.png";
 
@@ -23,44 +29,45 @@ export default function RegisterPage() {
     telefono: "", 
     telefonoConvencional: "",
     vendedor: "",
-    medioCaptacion: "" // <-- NUEVO CAMPO
+    medioCaptacion: "" 
   });
   
   const [vendedores, setVendedores] = useState<any[]>([]);
-  
-  // MAESTRÍAS OFRECIDAS
-  const [posgrados] = useState<string[]>([
+  const [loading, setLoading] = useState(false);
+  const [base64File, setBase64File] = useState<string | null>(null); // Guardamos el texto del archivo
+  const [fileName, setFileName] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const posgrados = [
     "Maestría en Educación Inclusiva, mención Inclusión Educativa y Atención a la Diversidad",
     "Maestría en Pedagogía, mención Docencia e Innovación Educativa",
     "Maestría en Educación, mención Gestión del Aprendizaje",
     "Pendiente"
-  ]);
-
-  // OPCIONES DE MEDIO DE CAPTACIÓN
-  const mediosCaptacion = [
-    "Recomendación",
-    "Redes Sociales",
-    "Publicidad Exterior",
-    "Correo Electrónico",
-    "Llamada Telefónica",
-    "Otros"
   ];
 
-  const [file, setFile] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
-  const [_tempNombre, setTempNombre] = useState("");
+  const mediosCaptacion = [
+    "Recomendación", "Redes Sociales", "Publicidad Exterior", 
+    "Correo Electrónico", "Llamada Telefónica", "Otros"
+  ];
 
   useEffect(() => {
-    const usuariosRaw = localStorage.getItem("usuarios_sistema");
-    if (usuariosRaw) {
-      const todosLosUsuarios = JSON.parse(usuariosRaw);
-      const soloAsesores = todosLosUsuarios.filter((u: any) => u.rol === "asesor");
-      setVendedores(soloAsesores);
-    }
+    const fetchAsesores = async () => {
+      try {
+        const q = query(collection(db, "usuarios"), where("rol", "==", "asesor"));
+        const querySnapshot = await getDocs(q);
+        const listaAsesores = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setVendedores(listaAsesores);
+      } catch (err) {
+        console.error("Error cargando asesores:", err);
+      }
+    };
+    fetchAsesores();
   }, []);
 
-  // Validación de Cédula Ecuatoriana
   const validarCedulaEcuatoriana = (cedula: string) => {
     if (cedula.length !== 10) return false;
     const provincia = parseInt(cedula.substring(0, 2));
@@ -76,92 +83,89 @@ export default function RegisterPage() {
     return total === digitoVerificador || (total === 10 && digitoVerificador === 0);
   };
 
+  // FUNCIÓN PARA CONVERTIR ARCHIVO A BASE64
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setError(null);
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
-      const limitInBytes = 2 * 1024 * 1024; // 2MB
-
-      if (selectedFile.size > limitInBytes) {
-        setError("El archivo es muy pesado. El límite máximo permitido es de 2MB.");
-        e.target.value = ""; 
-        setFile(null);
+      
+      // Límite de 1MB para no saturar Firestore gratuito
+      if (selectedFile.size > 1024 * 1024) { 
+        setError("El archivo es muy pesado. Máximo 1MB para evitar costos.");
         return;
       }
 
+      setFileName(selectedFile.name);
       const reader = new FileReader();
-      reader.onload = (event) => setFile(event.target?.result as string);
+      reader.onloadend = () => {
+        setBase64File(reader.result as string);
+      };
       reader.readAsDataURL(selectedFile);
     }
   };
 
-  const guardarRegistro = () => {
+  const guardarRegistro = async () => {
     setError(null);
 
-    if (!form.nombre || !form.apellido || !form.cedula || !form.vendedor || !file || !form.posgrado || !form.correo || !form.medioCaptacion) {
-      setError("Faltan datos obligatorios para proceder con el registro.");
+    if (!form.nombre || !form.apellido || !form.cedula || !form.vendedor || !base64File || !form.posgrado || !form.correo || !form.medioCaptacion) {
+      setError("Faltan datos obligatorios o el comprobante.");
       return;
     }
 
-    const regexCorreo = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!regexCorreo.test(form.correo)) {
-      setError("El formato del correo electrónico no es válido.");
+    if (form.tipoIdentificacion === "Cédula" && !validarCedulaEcuatoriana(form.cedula)) {
+      setError("La cédula no es válida.");
       return;
     }
 
-    if (form.tipoIdentificacion === "Cédula") {
-      if (!validarCedulaEcuatoriana(form.cedula)) {
-        setError("La cédula ingresada no es válida para Ecuador.");
-        return;
-      }
-    } else {
-      const regexPasaporte = /^[A-Z0-9]{5,15}$/i;
-      if (!regexPasaporte.test(form.cedula)) {
-        setError("El formato del pasaporte es incorrecto.");
-        return;
-      }
-    }
+    setLoading(true);
 
-    const registrosActuales = JSON.parse(localStorage.getItem("registros") || "[]");
-    const yaExiste = registrosActuales.find((reg: any) => reg.cedula === form.cedula);
-
-    if (yaExiste) {
-      setError(`Error: La persona con identificación ${form.cedula} ya se encuentra registrada en el sistema.`);
-      return;
-    }
-
-    const nuevoRegistro = { 
-      ...form, 
-      id: Date.now(),
-      comprobante: file, 
-      fechaFiltro: new Date().toISOString().split('T')[0],
-      estado: "Ingresado",
+    try {
+      const qExistente = query(collection(db, "registros"), where("cedula", "==", form.cedula));
+      const existeSnap = await getDocs(qExistente);
       
-      // Variables para Excel/Salesforce:
-      FirstName: form.nombre,
-      LastName: form.apellido,
-      Programa: form.posgrado,
-      Identification_type__c: form.tipoIdentificacion === "Cédula" ? "IDEC" : "PASS",
-      Personal_identification__c: form.cedula,
-      Email: form.correo,
-      Phone: form.telefonoConvencional || "",
-      MobilePhone: form.telefono,
-      Status: "Registrado",
-      LeadSource: form.medioCaptacion, // Se usa el medio elegido como LeadSource
-      Tipo_origen__c: "GESCO",
-      Company: "UTE",
-      Habeas_data__c: true 
-    };
+      if (!existeSnap.empty) {
+        throw new Error(`La identificación ${form.cedula} ya está registrada.`);
+      }
 
-    localStorage.setItem("registros", JSON.stringify([...registrosActuales, nuevoRegistro]));
-    setTempNombre(form.nombre); 
-    setOpen(true);
-    setForm({ 
-      nombre: "", apellido: "", tipoIdentificacion: "Cédula", cedula: "", 
-      posgrado: "", experiencia: "", experienciaDocente: "No", correo: "", 
-      telefono: "", telefonoConvencional: "", vendedor: "", medioCaptacion: ""
-    });
-    setFile(null);
+      // Estructura para Firestore con el archivo en Base64 (Cero costos de Storage)
+      const nuevoRegistro = {
+        ...form,
+        comprobanteBase64: base64File, // Aquí viaja el archivo como texto
+        fechaCreacion: serverTimestamp(),
+        fechaFiltro: new Date().toISOString().split('T')[0],
+        estado: "Ingresado",
+        
+        FirstName: form.nombre,
+        LastName: form.apellido,
+        Programa: form.posgrado,
+        Identification_type__c: form.tipoIdentificacion === "Cédula" ? "IDEC" : "PASS",
+        Personal_identification__c: form.cedula,
+        Email: form.correo,
+        Phone: form.telefonoConvencional || "",
+        MobilePhone: form.telefono,
+        Status: "Registrado",
+        LeadSource: form.medioCaptacion,
+        Tipo_origen__c: "GESCO",
+        Company: "UTE",
+        Habeas_data__c: true 
+      };
+
+      await addDoc(collection(db, "registros"), nuevoRegistro);
+
+      setOpen(true);
+      setForm({ 
+        nombre: "", apellido: "", tipoIdentificacion: "Cédula", cedula: "", 
+        posgrado: "", experiencia: "", experienciaDocente: "No", correo: "", 
+        telefono: "", telefonoConvencional: "", vendedor: "", medioCaptacion: ""
+      });
+      setBase64File(null);
+      setFileName("");
+
+    } catch (err: any) {
+      setError(err.message || "Error al conectar con la base de datos.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -200,11 +204,11 @@ export default function RegisterPage() {
 
         <Stack spacing={2.5} textAlign="left">
           <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
-            <TextField label="Nombres" fullWidth variant="filled" 
+            <TextField label="Nombres" fullWidth variant="filled" disabled={loading}
               InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
               value={form.nombre} onChange={e => setForm({...form, nombre: e.target.value})} 
             />
-            <TextField label="Apellidos" fullWidth variant="filled" 
+            <TextField label="Apellidos" fullWidth variant="filled" disabled={loading}
               InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
               value={form.apellido} onChange={e => setForm({...form, apellido: e.target.value})} 
             />
@@ -212,7 +216,7 @@ export default function RegisterPage() {
 
           <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
             <TextField 
-              label="Tipo ID" select sx={{ width: { xs: '100%', sm: '40%' } }} variant="filled"
+              label="Tipo ID" select sx={{ width: { xs: '100%', sm: '40%' } }} variant="filled" disabled={loading}
               InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
               value={form.tipoIdentificacion} onChange={e => setForm({...form, tipoIdentificacion: e.target.value})}
             >
@@ -221,40 +225,39 @@ export default function RegisterPage() {
             </TextField>
             <TextField 
               label={form.tipoIdentificacion === "Cédula" ? "Número de Cédula" : "Número de Pasaporte"} 
-              fullWidth variant="filled" 
+              fullWidth variant="filled" disabled={loading}
               InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
               value={form.cedula} onChange={e => setForm({...form, cedula: e.target.value})} 
             />
           </Box>
 
           <TextField 
-            label="Maestría / Posgrado" select fullWidth variant="filled" 
+            label="Maestría / Posgrado" select fullWidth variant="filled" disabled={loading}
             InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
             value={form.posgrado} onChange={e => setForm({...form, posgrado: e.target.value})}
           >
-            <MenuItem value="" disabled>Seleccione el programa de maestría</MenuItem>
             {posgrados.map((p, i) => <MenuItem key={i} value={p}>{p}</MenuItem>)}
           </TextField>
 
           <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
-            <TextField label="WhatsApp / Celular" fullWidth variant="filled" 
+            <TextField label="WhatsApp / Celular" fullWidth variant="filled" disabled={loading}
               InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
               value={form.telefono} onChange={e => setForm({...form, telefono: e.target.value})} 
             />
-            <TextField label="Teléfono Convencional" fullWidth variant="filled" 
+            <TextField label="Teléfono Convencional" fullWidth variant="filled" disabled={loading}
               InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
               value={form.telefonoConvencional} onChange={e => setForm({...form, telefonoConvencional: e.target.value})} 
             />
           </Box>
 
           <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
-            <TextField label="Correo Electrónico" fullWidth variant="filled" 
+            <TextField label="Correo Electrónico" fullWidth variant="filled" disabled={loading}
               InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
               value={form.correo} onChange={e => setForm({...form, correo: e.target.value})} 
             />
             <TextField 
               label="¿Experiencia docente (+2 años)?" 
-              select fullWidth variant="filled" 
+              select fullWidth variant="filled" disabled={loading}
               InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
               value={form.experienciaDocente} 
               onChange={e => setForm({...form, experienciaDocente: e.target.value})}
@@ -264,10 +267,9 @@ export default function RegisterPage() {
             </TextField>
           </Box>
 
-          {/* ASESOR Y MEDIO DE CAPTACIÓN */}
           <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
             <TextField 
-              label="Asesor GESCO Responsable" select fullWidth variant="filled" 
+              label="Asesor GESCO Responsable" select fullWidth variant="filled" disabled={loading}
               InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
               value={form.vendedor} onChange={e => setForm({...form, vendedor: e.target.value})}
             >
@@ -278,7 +280,7 @@ export default function RegisterPage() {
             </TextField>
 
             <TextField 
-              label="¿Cómo se enteró?" select fullWidth variant="filled" 
+              label="¿Cómo se enteró?" select fullWidth variant="filled" disabled={loading}
               InputProps={{ disableUnderline: true, sx: { borderRadius: '12px' } }}
               value={form.medioCaptacion} onChange={e => setForm({...form, medioCaptacion: e.target.value})}
             >
@@ -295,21 +297,23 @@ export default function RegisterPage() {
           }}>
             <CloudUploadIcon sx={{ color: '#1d6ea5', fontSize: 32, mb: 1 }} />
             <Typography variant="body2" sx={{ fontWeight: 800, color: '#124a70', display: 'block' }}>
-              Subir Comprobante (Máx. 2MB)
+              Subir Comprobante (Máx. 1MB)
             </Typography>
-            <Button variant="contained" component="label" size="small" sx={{ bgcolor: '#1d6ea5', mt: 2, borderRadius: '8px' }}>
-              {file ? "Archivo Listo ✓" : "Adjuntar Documento"}
+            <Button variant="contained" component="label" size="small" sx={{ bgcolor: '#1d6ea5', mt: 2, borderRadius: '8px' }} disabled={loading}>
+              {base64File ? "Comprobante Cargado ✓" : "Adjuntar Documento"}
               <input type="file" hidden accept="image/*,.pdf" onChange={handleFileChange} />
             </Button>
+            {fileName && <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>{fileName}</Typography>}
           </Box>
           
-          <Button variant="contained" size="large" onClick={guardarRegistro}
+          <Button variant="contained" size="large" onClick={guardarRegistro} disabled={loading}
             sx={{ 
               py: 2.2, borderRadius: "16px", fontWeight: 900, fontSize: '1.1rem',
               background: "linear-gradient(135deg, #1d6ea5 0%, #2a88ca 40%, #80bc71 100%)",
+              minHeight: '64px'
             }}
           >
-            Validar y Registrar en Sistema
+            {loading ? <CircularProgress size={26} color="inherit" /> : "Validar y Registrar en Sistema"}
           </Button>
         </Stack>
       </Paper>
@@ -319,7 +323,7 @@ export default function RegisterPage() {
           <CheckCircleOutlineIcon sx={{ fontSize: 60, color: '#80bc71', mb: 2 }} />
           <Typography variant="h5" sx={{ fontWeight: 900, color: '#124a70' }}>Registro Exitoso</Typography>
           <Typography sx={{ color: 'text.secondary', mt: 1.5 }}>
-            El postulante ha sido ingresado correctamente al sistema GESCO.
+            El postulante ha sido ingresado correctamente (Modo Ahorro).
           </Typography>
         </DialogContent>
         <DialogActions sx={{ justifyContent: 'center', pb: 5 }}>

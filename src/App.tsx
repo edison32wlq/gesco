@@ -7,6 +7,9 @@ import {
 import { NavLink, Route, Routes, useLocation, Navigate } from "react-router-dom";
 import { useState } from "react"; 
 
+// FIREBASE AUTH (NUEVO)
+import { getAuth, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
+
 // ICONOS
 import LogoutIcon from '@mui/icons-material/Logout';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
@@ -28,10 +31,6 @@ import LoginPage from "./pages/LoginPage";
 import MySalesPage from "./pages/MySalesPage";
 import UsersManagementPage from "./pages/UsersManagementPage";
 
-/**
- * ESTILOS PERSONALIZADOS PARA LOS BOTONES DE NAVEGACIÓN
- * Implementa efectos de hover, transiciones y estilos activos (glassmorphism)
- */
 const linkBtnSx = {
   color: "rgba(255,255,255,0.85)",
   textTransform: "none",
@@ -57,81 +56,77 @@ const linkBtnSx = {
 };
 
 export default function App() {
-  // HOOKS PRINCIPALES
   const { user, logout } = useAuth();
   const location = useLocation();
 
-  // ESTADOS PARA MENÚS DESPLEGABLES
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [anchorElProfile, setAnchorElProfile] = useState<null | HTMLElement>(null);
 
-  // ESTADOS PARA VENTANAS MODALES
   const [openProfileModal, setOpenProfileModal] = useState(false);
   const [openPasswordModal, setOpenPasswordModal] = useState(false);
   
-  // ESTADO PARA LA NOTIFICACIÓN DE ÉXITO (SNACKBAR)
   const [successMsg, setSuccessMsg] = useState(false);
 
-  // ESTADOS PARA FORMULARIO DE CAMBIO DE CONTRASEÑA Y VALIDACIONES
   const [passForm, setPassForm] = useState({ actual: "", nueva: "", confirmar: "" });
   const [errors, setErrors] = useState({ actual: "", nueva: "", confirmar: "" });
 
-  // MANEJADORES DE EVENTOS PARA MENÚS
   const handleOpenMenu = (e: React.MouseEvent<HTMLElement>) => setAnchorEl(e.currentTarget);
   const handleCloseMenu = () => setAnchorEl(null);
   const handleOpenProfileMenu = (e: React.MouseEvent<HTMLElement>) => setAnchorElProfile(e.currentTarget);
   const handleCloseProfileMenu = () => setAnchorElProfile(null);
 
   /**
-   * LÓGICA DE ACTUALIZACIÓN DE CONTRASEÑA
-   * Valida contra el LocalStorage y gestiona estados de error/éxito
+   * LÓGICA DE ACTUALIZACIÓN DE CONTRASEÑA EN FIREBASE
    */
-  const handleUpdatePassword = () => {
+  const handleUpdatePassword = async () => {
     const newErrors = { actual: "", nueva: "", confirmar: "" };
     let hasError = false;
 
-    // Recuperamos usuarios de la "base de datos" local
-    const usuariosRaw = localStorage.getItem("usuarios_sistema");
-    const usuarios = usuariosRaw ? JSON.parse(usuariosRaw) : [];
-    const dbUser = usuarios.find((u: any) => u.username === user?.username);
-
-    // 1. Validación: Contraseña Actual coincida con DB
-    if (passForm.actual !== dbUser?.password) {
-      newErrors.actual = "La contraseña actual es incorrecta.";
-      hasError = true;
-    }
-
-    // 2. Validación: Longitud mínima
+    // 1. Validaciones básicas de interfaz
     if (passForm.nueva.length < 6) {
       newErrors.nueva = "Debe tener al menos 6 caracteres.";
       hasError = true;
     }
 
-    // 3. Validación: Coincidencia de nueva contraseña
     if (passForm.nueva !== passForm.confirmar) {
       newErrors.confirmar = "Las contraseñas nuevas no coinciden.";
       hasError = true;
     }
 
-    setErrors(newErrors);
-    if (hasError) return;
+    if (hasError) {
+      setErrors(newErrors);
+      return;
+    }
 
-    // Persistencia del cambio
-    const userIndex = usuarios.findIndex((u: any) => u.username === user?.username);
-    usuarios[userIndex].password = passForm.nueva;
-    localStorage.setItem("usuarios_sistema", JSON.stringify(usuarios));
+    try {
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
 
-    // Reset de estados tras éxito
-    setSuccessMsg(true); 
-    setOpenPasswordModal(false);
-    setPassForm({ actual: "", nueva: "", confirmar: "" });
-    setErrors({ actual: "", nueva: "", confirmar: "" });
+      if (currentUser && currentUser.email) {
+        // Reautenticación (Requisito de seguridad de Firebase para cambios de contraseña)
+        const credential = EmailAuthProvider.credential(currentUser.email, passForm.actual);
+        await reauthenticateWithCredential(currentUser, credential);
+
+        // Actualización en la nube
+        await updatePassword(currentUser, passForm.nueva);
+
+        // Reset de estados tras éxito
+        setSuccessMsg(true); 
+        setOpenPasswordModal(false);
+        setPassForm({ actual: "", nueva: "", confirmar: "" });
+        setErrors({ actual: "", nueva: "", confirmar: "" });
+      }
+    } catch (error: any) {
+      if (error.code === 'auth/wrong-password') {
+        setErrors({ ...newErrors, actual: "La contraseña actual es incorrecta." });
+      } else {
+        alert("Ocurrió un error al actualizar la contraseña: " + error.message);
+      }
+    }
   };
 
-  // Determinar si estamos en una sección administrativa para el estilo del botón
   const isAdminPath = ["/seguimiento", "/vendedores", "/gestion-cuentas"].includes(location.pathname);
 
-  // --- RENDERIZADO DE RUTA PÚBLICA (LOGIN) ---
   if (location.pathname === "/login") {
     return (
       <>
@@ -144,13 +139,11 @@ export default function App() {
     );
   }
 
-  // --- RENDERIZADO DE APLICACIÓN PROTEGIDA ---
   return (
     <ProtectedRoute>
-      <> {/* FRAGMENTO NECESARIO PARA EVITAR ERROR TS2746 (MÚLTIPLES HIJOS) */}
+      <>
         <CssBaseline />
         
-        {/* NOTIFICACIONES GLOBALES */}
         <Snackbar 
           open={successMsg} 
           autoHideDuration={6000} 
@@ -168,7 +161,6 @@ export default function App() {
           </Alert>
         </Snackbar>
 
-        {/* BARRA DE NAVEGACIÓN SUPERIOR */}
         <AppBar position="sticky" elevation={0} sx={{ 
             background: "linear-gradient(135deg, #124a70 0%, #1d6ea5 50%, #80bc71 100%)",
             backdropFilter: "blur(20px)",
@@ -177,7 +169,6 @@ export default function App() {
           }}>
           <Toolbar sx={{ height: 80, justifyContent: 'space-between' }}>
             
-            {/* LOGOTIPO Y BRANDING */}
             <Stack direction="row" alignItems="center" spacing={2} component={NavLink} to="/" sx={{ textDecoration: 'none' }}>
               <Box component="img" src={gescoLogo} alt="Gesco Logo" sx={{ height: 48 }} />
               <Box sx={{ width: "1px", height: "30px", bgcolor: "rgba(255,255,255,0.3)" }} />
@@ -191,12 +182,10 @@ export default function App() {
               </Box>
             </Stack>
 
-            {/* MENÚ DE NAVEGACIÓN PRINCIPAL (ESCRITORIO) */}
             <Box sx={{ display: { xs: 'none', md: 'flex' }, bgcolor: "rgba(0,0,0,0.1)", p: 0.6, borderRadius: "16px" }}>
               <Button component={NavLink} to="/" end sx={linkBtnSx}>Inicio</Button>
               <Button component={NavLink} to="/registro" sx={linkBtnSx}>Registro Maestría</Button>
               
-              {/* ACCESO RESTRINGIDO A ADMINISTRADORES */}
               {(user?.rol === 'superadmin' || user?.rol === 'administrador') && (
                 <>
                   <Button 
@@ -225,13 +214,11 @@ export default function App() {
                 </>
               )}
 
-              {/* ACCESO PARA ASESORES O SUPERADMIN */}
               {(user?.rol === 'asesor' || user?.rol === 'superadmin') && (
                 <Button component={NavLink} to="/mis-ventas" sx={linkBtnSx}>Mis Ventas</Button>
               )}
             </Box>
             
-            {/* ÁREA DE PERFIL Y CIERRE DE SESIÓN */}
             <Stack direction="row" spacing={2} alignItems="center">
               <Stack 
                 direction="row" 
@@ -276,15 +263,12 @@ export default function App() {
           </Toolbar>
         </AppBar>
 
-        {/* CONTENEDOR PRINCIPAL DE PÁGINAS */}
         <Box sx={{ position: 'relative', minHeight: "100vh", bgcolor: "#f8fafc" }}>
           <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1, pt: 5, pb: 8 }}>
             <Routes>
-              {/* RUTAS GENERALES */}
               <Route path="/" element={<HomePage />} />
               <Route path="/registro" element={<RegisterPage />} />
               
-              {/* RUTAS ADMINISTRATIVAS CON PROTECCIÓN DE ROL SECUNDARIA */}
               <Route path="/seguimiento" element={
                 (user?.rol === 'superadmin' || user?.rol === 'administrador') ? <MultiplyPage /> : <Navigate to="/" />
               } />
@@ -298,13 +282,11 @@ export default function App() {
                 (user?.rol === 'asesor' || user?.rol === 'superadmin') ? <MySalesPage /> : <Navigate to="/" />
               } />
               
-              {/* REDIRECCIÓN POR DEFECTO */}
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </Container>
         </Box>
 
-        {/* MODAL: INFORMACIÓN DE PERFIL */}
         <Dialog open={openProfileModal} onClose={() => setOpenProfileModal(false)} fullWidth maxWidth="xs" PaperProps={{ sx: { borderRadius: '24px' } }}>
           <DialogTitle sx={{ fontWeight: 900, textAlign: 'center', color: '#124a70', pt: 4 }}>Perfil de Usuario</DialogTitle>
           <DialogContent>
@@ -326,7 +308,6 @@ export default function App() {
           </DialogActions>
         </Dialog>
 
-        {/* MODAL: CAMBIAR CONTRASEÑA */}
         <Dialog open={openPasswordModal} onClose={() => { setOpenPasswordModal(false); setErrors({actual:"", nueva:"", confirmar:""}); }} fullWidth maxWidth="xs" PaperProps={{ sx: { borderRadius: '24px' } }}>
           <DialogTitle sx={{ fontWeight: 900, color: '#124a70' }}>Cambiar Contraseña</DialogTitle>
           <DialogContent>
